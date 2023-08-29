@@ -1,118 +1,44 @@
-pub enum Stmt {
-    Expr {
-        expr: Expr,
-        semi: bool,
-        loc: SrcLoc,
-    },
-    Let {
-        name: String,
-        ty: Option<Type>,
-        val: Expr,
-        loc: SrcLoc,
-    },
-    Return {
-        val: Expr,
-        loc: SrcLoc,
-    },
+use crate::token::TokKind;
+
+pub struct Ast {
+    pub decls: Vec<Decl>,
 }
 
-pub enum Return {
-    Expr(Expr),
-    Unit,
+pub enum AstKind {
+    Decl,
+    Expr,
+    Tok(TokKind),
+}
+
+pub enum Decl {
+    Fn(),
+    Asm(),
+    Var { name: String, ty: Type, val: Expr },
+    Struct(),
+    Trait(),
+    Impl(),
+    Use(),
+    Package(),
+    Enum(),
 }
 
 pub enum Expr {
-    Ident(String),
-    Int {
-        val: i64,
-        base: u32,
-        kind: IntKind,
-    },
-    Float {
-        val: f64,
-        kind: FloatKind,
-    },
-    String(String),
-    Char(char),
-    Bool(bool),
-    Array(Vec<Expr>),
-    Tuple(Vec<Expr>),
-    Struct(Vec<(String, Expr)>),
-    Call {
-        name: String,
-        args: Vec<Expr>,
-    },
-    Index {
-        name: String,
-        index: Box<Expr>,
-    },
-    Unary {
-        op: UnaryOp,
-        expr: Box<Expr>,
-    },
-    Binary {
-        op: BinaryOp,
-        left: Box<Expr>,
-        right: Box<Expr>,
-    },
-    If {
-        cond: Box<Expr>,
-        then: Box<Expr>,
-        els: Option<Box<Expr>>,
-    },
-    Block {
-        stmts: Vec<Stmt>,
-    },
-    Fn {
-        name: String,
-        args: Vec<(String, Type)>,
-        ret: Type,
-        body: Box<Expr>,
-    },
-    Asm {
-        name: String,
-        args: Vec<(String, Type)>,
-        ret: Type,
-        body: Box<Expr>,
-    },
-    Type {
-        name: String,
-        fields: Vec<(String, Type)>,
-    },
-    Trait {
-        name: String,
-        methods: Vec<(String, Type)>,
-    },
-    Impl {
-        name: String,
-        methods: Vec<(String, Type)>,
-    },
-    For {
-        name: String,
-        iter: Box<Expr>,
-        body: Box<Expr>,
-    },
-    Match {
-        expr: Box<Expr>,
-        arms: Vec<(Expr, Expr)>,
-    },
-    Assign {
-        name: String,
-        val: Box<Expr>,
-    },
-    Return {
-        val: Box<Expr>,
-    },
-}
-
-pub struct Type {
-    pub name: String,
-    pub fields: Vec<(String, Type)>,
+    Int(String),
+    Float,
+    String,
+    Char,
+    If,
+    Match,
+    For,
+    Block,
+    FnCall,
+    Unary,
+    Binary,
+    Unit,
 }
 
 pub struct SrcLoc {
     pub file: String,
-    pub pack: String,
     pub line: u32,
     pub col: u32,
 }
@@ -157,4 +83,45 @@ pub enum IntKind {
 pub enum FloatKind {
     F32,
     F64,
+}
+
+pub enum Type {
+    BuiltIn(BuiltIn),
+    Custom(String),
+}
+
+pub enum BuiltIn {
+    Int(IntKind),
+    Float(FloatKind),
+    Bool,
+    Char,
+    Unit,
+    // Array,
+    // Slice,
+    Tuple(Vec<Type>),
+    Str,
+    // Ptr,
+}
+
+impl From<String> for Type {
+    fn from(s: String) -> Self {
+        match s.as_str() {
+            "i8" => Type::BuiltIn(BuiltIn::Int(IntKind::I8)),
+            "i16" => Type::BuiltIn(BuiltIn::Int(IntKind::I16)),
+            "i32" => Type::BuiltIn(BuiltIn::Int(IntKind::I32)),
+            "i64" => Type::BuiltIn(BuiltIn::Int(IntKind::I64)),
+            "i128" => Type::BuiltIn(BuiltIn::Int(IntKind::I128)),
+            "u8" => Type::BuiltIn(BuiltIn::Int(IntKind::U8)),
+            "u16" => Type::BuiltIn(BuiltIn::Int(IntKind::U16)),
+            "u32" => Type::BuiltIn(BuiltIn::Int(IntKind::U32)),
+            "u64" => Type::BuiltIn(BuiltIn::Int(IntKind::U64)),
+            "u128" => Type::BuiltIn(BuiltIn::Int(IntKind::U128)),
+            "f32" => Type::BuiltIn(BuiltIn::Float(FloatKind::F32)),
+            "f64" => Type::BuiltIn(BuiltIn::Float(FloatKind::F64)),
+            "bool" => Type::BuiltIn(BuiltIn::Bool),
+            "char" => Type::BuiltIn(BuiltIn::Char),
+            "str" => Type::BuiltIn(BuiltIn::Str),
+            _ => Type::Custom(s),
+        }
+    }
 }

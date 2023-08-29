@@ -1,11 +1,93 @@
 use crate::err;
 
 #[derive(Debug, PartialEq)]
+pub enum TokKind {
+    Ident,
+    Char,
+    String,
+    Int,
+    Alpha,
+    Num,
+
+    Add,
+    Sub,
+    Mul,
+    Div,
+
+    Eq,
+    Gt,
+    Lt,
+
+    Neq,
+    Deq,
+    Geq,
+    Leq,
+    AddEq,
+    SubEq,
+    MulEq,
+    DivEq,
+    Lsl,
+    Lsr,
+    And,
+    Or,
+    Caret,
+    Wave,
+    Comment,
+
+    LParen,
+    RParen,
+    LSquare,
+    RSquare,
+    LBrace,
+    RBrace,
+
+    Semi,
+    Colon,
+    Comma,
+    Bang,
+    Ques,
+    At,
+    Pound,
+    Under,
+    Dot,
+    SQ,
+    DQ,
+
+    T,
+    Type,
+    Let,
+    Fn,
+    // Proc
+    Asm,
+    Struct,
+    Trait,
+    Comptime,
+    Package,
+    Pub,
+    Mut,
+    Use,
+
+    If,
+    Else,
+    Match,
+    Return,
+    True,
+    False,
+    For,
+
+    Ws,
+    Nl,
+    Invalid,
+    Esc,
+    EOF,
+}
+
+#[derive(Debug, PartialEq)]
 pub enum Tok {
     Ident(String),
     Char(String),
     String(String),
-    Int(String),
+    Scalar(String),
     Alpha(char),
     Num(char),
 
@@ -57,6 +139,7 @@ pub enum Tok {
     Type,
     Let,
     Fn,
+    // Proc
     Asm,
     Struct,
     Trait,
@@ -169,7 +252,7 @@ impl std::fmt::Display for Tok {
             Tok::Ident(s) => write!(f, "{}", s),
             Tok::String(s) => write!(f, r#""{}""#, s),
             Tok::Char(s) => write!(f, "'{}'", s),
-            Tok::Int(s) => write!(f, "{}", s),
+            Tok::Scalar(s) => write!(f, "{}", s),
             Tok::Alpha(c) => write!(f, "{}", c),
             Tok::Num(c) => write!(f, "{}", c),
             Tok::Add => write!(f, "+"),

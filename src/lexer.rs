@@ -44,7 +44,7 @@ impl<'a> Lexer<'a> {
         toks
     }
 
-    fn next_tok(&mut self) -> Option<Tok> {
+    pub fn next_tok(&mut self) -> Option<Tok> {
         self.skip_ws();
         while let Some(ch) = self.take() {
             let tok = Tok::from(ch);
@@ -79,7 +79,7 @@ impl<'a> Lexer<'a> {
                         Tok::Num(_) | Tok::Under => true,
                         _ => false,
                     });
-                    return Some(Tok::Int(num));
+                    return Some(Tok::Scalar(num));
                 }
                 InitTok::Alpha(_) => {
                     let ident = self.take_while(ch, |tok| match tok {
@@ -292,10 +292,27 @@ mod tests {
         assert_eq!(
             toks,
             vec![
-                Tok::Int("123".to_string()),
-                Tok::Int("123".to_string()),
+                Tok::Scalar("123".to_string()),
+                Tok::Scalar("123".to_string()),
                 Tok::Ident("abc".to_string()),
-                Tok::Int("123_123".to_string()),
+                Tok::Scalar("123_123".to_string()),
+            ]
+        );
+    }
+
+    #[test]
+    fn test_floats() {
+        let txt = r#"
+        123.123
+        "#;
+        let mut lexer = Lexer::new(txt);
+        let toks = lexer.lex();
+        assert_eq!(
+            toks,
+            vec![
+                Tok::Scalar("123".to_string()),
+                Tok::Dot,
+                Tok::Scalar("123".to_string()),
             ]
         );
     }
