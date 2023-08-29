@@ -1,3 +1,5 @@
+pub mod ast;
+pub mod err;
 pub mod lexer;
-pub mod token;
 pub mod parser;
+pub mod token;
