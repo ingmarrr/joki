@@ -76,7 +76,7 @@ impl<'a> Lexer<'a> {
                 InitTok::Bang => check!(self, '=' => Tok::Neq; Tok::Bang),
                 InitTok::Num(_) => {
                     let num = self.take_while(ch, |tok| match tok {
-                        Tok::Num(_) | Tok::Under => true,
+                        Tok::Num(_) | Tok::Under | Tok::Dot => true,
                         _ => false,
                     });
                     return Some(Tok::Scalar(num));
@@ -90,6 +90,7 @@ impl<'a> Lexer<'a> {
                     if let Tok::Invalid = kw {
                         return Some(Tok::Ident(ident));
                     }
+                    tracing::info!("Found valid keyword :: {}", ident);
                     return Some(kw);
                 }
                 InitTok::Under => {
@@ -303,16 +304,15 @@ mod tests {
     #[test]
     fn test_floats() {
         let txt = r#"
-        123.123
+        123.123 123...
         "#;
         let mut lexer = Lexer::new(txt);
         let toks = lexer.lex();
         assert_eq!(
             toks,
             vec![
-                Tok::Scalar("123".to_string()),
-                Tok::Dot,
-                Tok::Scalar("123".to_string()),
+                Tok::Scalar("123.123".to_string()),
+                Tok::Scalar("123...".to_string())
             ]
         );
     }

@@ -15,6 +15,9 @@ pub enum ParseError {
     #[error("Invalid token at (line :: {line}, col :: {col})")]
     InvalidToken { line: usize, col: usize },
 
+    #[error("Unexpected EOF at (line :: {line}, col :: {col})")]
+    UnexpectedEOF { line: usize, col: usize },
+
     #[error("Expected identifier ({ident}) at (line :: {line}, col :: {col})")]
     ExpectedIdent {
         ident: String,
@@ -29,6 +32,16 @@ pub enum ParseError {
         col: usize,
     },
 
-    #[error("Expected expression at (line :: {line}, col :: {col})")]
-    ExpectedExpr { line: usize, col: usize },
+    #[error("Expected expression ({expr}) at (line :: {line}, col :: {col})")]
+    ExpectedExpr {
+        expr: String,
+        line: usize,
+        col: usize,
+    },
+
+    #[error("Expected keyword ({kw}) at (line :: {line}, col :: {col})")]
+    ExpectedKeyword { kw: String, line: usize, col: usize },
+
+    #[error("Expected type ({ty}) at (line :: {line}, col :: {col})")]
+    ExpectedType { ty: String, line: usize, col: usize },
 }

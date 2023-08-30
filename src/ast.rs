@@ -10,6 +10,7 @@ pub enum AstKind {
     Tok(TokKind),
 }
 
+#[derive(Debug, PartialEq)]
 pub enum Decl {
     Fn(),
     Asm(),
@@ -22,19 +23,42 @@ pub enum Decl {
     Enum(),
 }
 
+#[derive(Debug, PartialEq)]
 pub enum Expr {
-    Int(String),
-    Float,
-    String,
-    Char,
-    If,
+    LitInt(String),
+    LitFloat(String),
+    LitString(String),
+    LitChar(String),
+    LitBool(bool),
+    If {
+        cond: Box<Expr>,
+        then: Box<Expr>,
+        els: Option<Box<Expr>>,
+    },
     Match,
+    // expr: Box<Expr>,
+    // arms: Vec<MatchArm>,
     For,
-    Block,
+    Block {
+        // stmts: Vec<Stmt>,
+        expr: Option<Box<Expr>>,
+    },
     FnCall,
-    Unary,
-    Binary,
+    Unary {
+        op: UnaryOp,
+        expr: Box<Expr>,
+    },
+    Binary {
+        op: BinaryOp,
+        lhs: Box<Expr>,
+        rhs: Box<Expr>,
+    },
     Unit,
+}
+
+pub enum Stmt {
+    Expr(Expr),
+    Decl(Decl),
 }
 
 pub struct SrcLoc {
@@ -43,6 +67,7 @@ pub struct SrcLoc {
     pub col: u32,
 }
 
+#[derive(Debug, PartialEq)]
 pub enum BinaryOp {
     Add,
     Sub,
@@ -58,6 +83,7 @@ pub enum BinaryOp {
     Lsr,
 }
 
+#[derive(Debug, PartialEq)]
 pub enum UnaryOp {
     Neg,
     Not,
@@ -67,6 +93,7 @@ pub enum UnaryOp {
     BNot,
 }
 
+#[derive(Debug, PartialEq)]
 pub enum IntKind {
     I8,
     I16,
@@ -80,16 +107,19 @@ pub enum IntKind {
     U128,
 }
 
+#[derive(Debug, PartialEq)]
 pub enum FloatKind {
     F32,
     F64,
 }
 
+#[derive(Debug, PartialEq)]
 pub enum Type {
     BuiltIn(BuiltIn),
     Custom(String),
 }
 
+#[derive(Debug, PartialEq)]
 pub enum BuiltIn {
     Int(IntKind),
     Float(FloatKind),
