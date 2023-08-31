@@ -1,6 +1,6 @@
 use std::{iter::Peekable, str::Chars};
 
-use crate::err;
+use crate::err::{self, LexError};
 use crate::token::{InitTok, Tok};
 
 pub struct Lexer<'a> {
@@ -8,6 +8,7 @@ pub struct Lexer<'a> {
     pub errs: Vec<err::LexError>,
     pub line: usize,
     pub col: usize,
+    fchar: bool,
 }
 
 macro_rules! check {
@@ -17,12 +18,19 @@ macro_rules! check {
                 match ch {
                     $($ch => {
                         $self.take();
-                        return Some($tok);
+                        tracing::info!("Found valid token :: {}", $tok);
+                        return Ok($tok);
                     })*
-                    _ => return Some($else),
+                    _ => {
+                        tracing::info!("Found valid token :: {}", $else);
+                        return Ok($else);
+                    }
                 }
             }
-            None => return None,
+            None => return Err(LexError::UnexpectedEOF {
+                line: $self.line,
+                col: $self.col,
+            }),
         }
     };
 }
@@ -33,18 +41,19 @@ impl<'a> Lexer<'a> {
             errs: Vec::new(),
             line: 0,
             col: 0,
+            fchar: true,
         }
     }
 
     pub fn lex(&mut self) -> Vec<Tok> {
         let mut toks = Vec::new();
-        while let Some(tok) = self.next_tok() {
+        while let Ok(tok) = self.next_tok() {
             toks.push(tok);
         }
         toks
     }
 
-    pub fn next_tok(&mut self) -> Option<Tok> {
+    pub fn next_tok(&mut self) -> Result<Tok, LexError> {
         self.skip_ws();
         while let Some(ch) = self.take() {
             let tok = Tok::from(ch);
@@ -59,17 +68,18 @@ impl<'a> Lexer<'a> {
             let init_tok = InitTok::try_from(&tok);
 
             if let Err(_) = init_tok {
-                return Some(tok);
+                tracing::info!("Found valid token :: {}", tok);
+                return Ok(tok);
             }
 
             let init_tok = init_tok.unwrap();
             match init_tok {
-                InitTok::SQ => return Some(Tok::Char(self.take_until('\''))),
-                InitTok::DQ => return Some(Tok::String(self.take_until('"'))),
-                InitTok::Add => check!(self, '=' => Tok::AddEq; Tok::Add),
-                InitTok::Sub => check!(self, '=' => Tok::SubEq; Tok::Sub),
-                InitTok::Mul => check!(self, '=' => Tok::MulEq; Tok::Mul),
-                InitTok::Div => check!(self, '=' => Tok::DivEq, '/' => Tok::Comment; Tok::Div),
+                InitTok::SQ => return Ok(Tok::Char(self.take_until('\''))),
+                InitTok::DQ => return Ok(Tok::String(self.take_until('"'))),
+                InitTok::Add => check!(self, '=' => Tok::AddEq; Tok::Plus),
+                InitTok::Sub => check!(self, '=' => Tok::SubEq; Tok::Minus),
+                InitTok::Mul => check!(self, '=' => Tok::MulEq; Tok::Star),
+                InitTok::Div => check!(self, '=' => Tok::DivEq, '/' => Tok::Comment; Tok::Slash),
                 InitTok::Eq => check!(self, '=' => Tok::Deq; Tok::Eq),
                 InitTok::Lt => check!(self, '=' => Tok::Leq, '<' => Tok::Lsl; Tok::Lt),
                 InitTok::Gt => check!(self, '=' => Tok::Geq, '>' => Tok::Lsr; Tok::Gt),
@@ -79,7 +89,8 @@ impl<'a> Lexer<'a> {
                         Tok::Num(_) | Tok::Under | Tok::Dot => true,
                         _ => false,
                     });
-                    return Some(Tok::Scalar(num));
+                    tracing::info!("Found valid number :: {}", num);
+                    return Ok(Tok::Scalar(num));
                 }
                 InitTok::Alpha(_) => {
                     let ident = self.take_while(ch, |tok| match tok {
@@ -87,11 +98,12 @@ impl<'a> Lexer<'a> {
                         _ => false,
                     });
                     let kw = Tok::from(ident.as_str());
-                    if let Tok::Invalid = kw {
-                        return Some(Tok::Ident(ident));
+                    if let Tok::Ident(_) = kw {
+                        tracing::info!("Found valid ident :: {}", ident);
+                        return Ok(Tok::Ident(ident));
                     }
                     tracing::info!("Found valid keyword :: {}", ident);
-                    return Some(kw);
+                    return Ok(kw);
                 }
                 InitTok::Under => {
                     let ident = self.take_while(ch, |tok| match tok {
@@ -100,14 +112,19 @@ impl<'a> Lexer<'a> {
                     });
                     for ch in ident.chars() {
                         if ch != '_' {
-                            return Some(Tok::Ident(ident));
+                            tracing::info!("Found valid ident :: {}", ident);
+                            return Ok(Tok::Ident(ident));
                         }
                     }
-                    return Some(Tok::Under);
+                    tracing::info!("Found valid keyword :: {}", ident);
+                    return Ok(Tok::Under);
                 }
             }
         }
-        None
+        Err(LexError::UnexpectedEOF {
+            line: self.line,
+            col: self.col,
+        })
     }
 
     fn take(&mut self) -> Option<char> {
@@ -115,8 +132,13 @@ impl<'a> Lexer<'a> {
         if ch == Some('\n') {
             self.line += 1;
             self.col = 0;
+            self.fchar = true;
         } else {
-            self.col += 1;
+            if self.fchar {
+                self.fchar = false
+            } else {
+                self.col += 1;
+            }
         }
         ch
     }
@@ -148,6 +170,58 @@ impl<'a> Lexer<'a> {
         self.chs.peek().map(|ch| *ch)
     }
 
+    pub fn peek_tok(&mut self) -> Option<Tok> {
+        self.peek().map(Tok::from)
+    }
+
+    pub fn next_if(&mut self, tok: Tok) -> Option<Tok> {
+        if let Some(t) = self.peek_tok() {
+            if t == tok {
+                self.take();
+                return Some(t);
+            }
+        }
+        None
+    }
+
+    pub fn peek_tok_ignore_ws(&mut self) -> Option<Tok> {
+        while let Some(tok) = self.peek().map(Tok::try_from) {
+            match tok {
+                Ok(Tok::Ws) | Ok(Tok::Nl) => {
+                    self.take();
+                }
+                _ => break,
+            }
+        }
+        self.peek().map(Tok::from)
+    }
+
+    pub fn peek_tok_take_ws(&mut self) -> Option<Tok> {
+        while let Some(tok) = self.peek().map(Tok::try_from) {
+            match tok {
+                Ok(Tok::Ws) | Ok(Tok::Nl) => {
+                    self.take();
+                }
+                _ => break,
+            }
+        }
+        self.peek().map(Tok::from)
+    }
+
+    pub fn peek_two_cons_toks_take_init_ws(&mut self) -> (Option<Tok>, Option<Tok>) {
+        while let Some(tok) = self.peek().map(Tok::try_from) {
+            match tok {
+                Ok(Tok::Ws) | Ok(Tok::Nl) => {
+                    self.take();
+                }
+                _ => break,
+            }
+        }
+        let tok1 = self.peek().map(Tok::from);
+        let tok2 = self.peek().map(Tok::from);
+        (tok1, tok2)
+    }
+
     fn skip_ws(&mut self) {
         while let Some(tok) = self.peek().map(Tok::try_from) {
             match tok {
@@ -172,17 +246,17 @@ mod tests {
         assert_eq!(
             toks,
             vec![
-                Tok::Add,
-                Tok::Sub,
-                Tok::Mul,
-                Tok::Div,
+                Tok::Plus,
+                Tok::Minus,
+                Tok::Star,
+                Tok::Slash,
                 Tok::LParen,
                 Tok::RParen,
                 Tok::LSquare,
                 Tok::RSquare,
                 Tok::LBrace,
                 Tok::RBrace,
-                Tok::Semi,
+                Tok::SemiColon,
                 Tok::Colon,
                 Tok::Comma,
                 Tok::Eq,
@@ -191,7 +265,7 @@ mod tests {
                 Tok::And,
                 Tok::Or,
                 Tok::Caret,
-                Tok::Wave,
+                Tok::Tilde,
                 Tok::Bang,
                 Tok::At,
                 Tok::Pound,
@@ -214,7 +288,7 @@ mod tests {
                 Tok::And,
                 Tok::Or,
                 Tok::Caret,
-                Tok::Wave,
+                Tok::Tilde,
             ]
         );
     }

@@ -1,4 +1,4 @@
-use crate::token::TokKind;
+use crate::token::{Tok, TokKind};
 
 pub struct Ast {
     pub decls: Vec<Decl>,
@@ -43,7 +43,11 @@ pub enum Expr {
         // stmts: Vec<Stmt>,
         expr: Option<Box<Expr>>,
     },
-    FnCall,
+    FnCall {
+        name: String,
+        args: Vec<Expr>,
+    },
+    Var(String),
     Unary {
         op: UnaryOp,
         expr: Box<Expr>,
@@ -73,6 +77,7 @@ pub enum BinaryOp {
     Sub,
     Mul,
     Div,
+    Mod,
     Eq,
     Neq,
     Gt,
@@ -81,6 +86,94 @@ pub enum BinaryOp {
     Leq,
     Lsl,
     Lsr,
+    Invalid,
+}
+
+impl From<Tok> for BinaryOp {
+    fn from(value: Tok) -> Self {
+        match value {
+            Tok::Plus => BinaryOp::Add,
+            Tok::Minus => BinaryOp::Sub,
+            Tok::Star => BinaryOp::Mul,
+            Tok::Slash => BinaryOp::Div,
+            Tok::Percent => BinaryOp::Mod,
+            Tok::Deq => BinaryOp::Eq,
+            Tok::Neq => BinaryOp::Neq,
+            Tok::Gt => BinaryOp::Gt,
+            Tok::Lt => BinaryOp::Lt,
+            Tok::Geq => BinaryOp::Geq,
+            Tok::Leq => BinaryOp::Leq,
+            Tok::Lsl => BinaryOp::Lsl,
+            Tok::Lsr => BinaryOp::Lsr,
+            _ => BinaryOp::Invalid,
+        }
+    }
+}
+
+impl From<CmpOp> for BinaryOp {
+    fn from(value: CmpOp) -> Self {
+        match value {
+            CmpOp::Eq => BinaryOp::Eq,
+            CmpOp::Neq => BinaryOp::Neq,
+            CmpOp::Gt => BinaryOp::Gt,
+            CmpOp::Lt => BinaryOp::Lt,
+            CmpOp::Geq => BinaryOp::Geq,
+            CmpOp::Leq => BinaryOp::Leq,
+            _ => BinaryOp::Invalid,
+        }
+    }
+}
+
+#[derive(Debug, PartialEq)]
+pub enum CmpOp {
+    Eq,
+    Neq,
+    Gt,
+    Lt,
+    Geq,
+    Leq,
+    Invalid,
+}
+
+impl From<Tok> for CmpOp {
+    fn from(value: Tok) -> Self {
+        tracing::info!("Converting {:?} to CmpOp", value);
+        match value {
+            Tok::Deq => CmpOp::Eq,
+            Tok::Neq => CmpOp::Neq,
+            Tok::Gt => CmpOp::Gt,
+            Tok::Lt => CmpOp::Lt,
+            Tok::Geq => CmpOp::Geq,
+            Tok::Leq => CmpOp::Leq,
+            _ => CmpOp::Invalid,
+        }
+    }
+}
+
+impl From<(Tok, Tok)> for CmpOp {
+    fn from(value: (Tok, Tok)) -> Self {
+        match value {
+            (Tok::Eq, Tok::Eq) => CmpOp::Eq,
+            (Tok::Neq, Tok::Eq) => CmpOp::Neq,
+            (Tok::Gt, Tok::Eq) => CmpOp::Geq,
+            (Tok::Lt, Tok::Eq) => CmpOp::Leq,
+            _ => CmpOp::Invalid,
+        }
+    }
+}
+
+impl From<(Option<Tok>, Option<Tok>)> for CmpOp {
+    fn from(value: (Option<Tok>, Option<Tok>)) -> Self {
+        match value {
+            (Some(Tok::Eq), Some(Tok::Eq)) => CmpOp::Eq,
+            (Some(Tok::Neq), Some(Tok::Eq)) => CmpOp::Neq,
+            (Some(Tok::Gt), Some(Tok::Eq)) => CmpOp::Geq,
+            (Some(Tok::Lt), Some(Tok::Eq)) => CmpOp::Leq,
+            (Some(Tok::Gt), None) => CmpOp::Gt,
+            (Some(Tok::Lt), None) => CmpOp::Lt,
+            _ => CmpOp::Invalid,
+        }
+    }
 }
 
 #[derive(Debug, PartialEq)]
@@ -91,6 +184,22 @@ pub enum UnaryOp {
     BOr,
     BXor,
     BNot,
+}
+
+impl TryFrom<&Tok> for UnaryOp {
+    type Error = ();
+
+    fn try_from(value: &Tok) -> Result<Self, Self::Error> {
+        match value {
+            Tok::Minus => Ok(UnaryOp::Neg),
+            Tok::Bang => Ok(UnaryOp::Not),
+            Tok::And => Ok(UnaryOp::BAnd),
+            Tok::Or => Ok(UnaryOp::BOr),
+            Tok::Caret => Ok(UnaryOp::BXor),
+            Tok::Tilde => Ok(UnaryOp::BNot),
+            _ => Err(()),
+        }
+    }
 }
 
 #[derive(Debug, PartialEq)]
