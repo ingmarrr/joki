@@ -79,6 +79,7 @@ pub enum TokKind {
 
     Ws,
     Nl,
+    Tab,
     Invalid,
     Esc,
     EOF,
@@ -163,6 +164,7 @@ impl From<Tok> for TokKind {
             Tok::For => TokKind::For,
 
             Tok::Ws => TokKind::Ws,
+            Tok::Tab => TokKind::Tab,
             Tok::Nl => TokKind::Nl,
             Tok::Invalid => TokKind::Invalid,
             Tok::Esc => TokKind::Esc,
@@ -250,6 +252,7 @@ pub enum Tok {
 
     Ws,
     Nl,
+    Tab,
     Invalid,
     Esc,
     EOF,
@@ -291,7 +294,7 @@ impl From<char> for Tok {
             '\n' => Tok::Nl,
             '\r' => Tok::Nl,
             ' ' => Tok::Ws,
-            '\t' => Tok::Ws,
+            '\t' => Tok::Tab,
             '\0' => Tok::EOF,
             _ if value.is_alphabetic() => Tok::Alpha(value),
             _ if value.is_numeric() => Tok::Num(value),
@@ -408,6 +411,7 @@ impl std::fmt::Display for Tok {
             Tok::False => write!(f, "false"),
             Tok::For => write!(f, "for"),
             Tok::Ws => write!(f, " "),
+            Tok::Tab => write!(f, "\t"),
             Tok::Nl => write!(f, "\n"),
             Tok::Invalid => write!(f, "Invalid"),
             Tok::Esc => write!(f, "\\"),

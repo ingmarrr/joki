@@ -4,13 +4,13 @@ use crate::{
     token::Tok,
 };
 
-pub struct Parser<'a> {
-    lx: crate::lex::Lexer<'a>,
+pub struct Parser {
+    lx: crate::lex::Lexer,
     _errs: Vec<crate::err::ParseError>,
 }
 
-impl<'a> Parser<'a> {
-    pub fn new(lx: crate::lex::Lexer<'a>) -> Parser<'a> {
+impl Parser {
+    pub fn new(lx: crate::lex::Lexer) -> Parser {
         Parser {
             lx,
             _errs: Vec::new(),
@@ -62,8 +62,16 @@ impl<'a> Parser<'a> {
                     expr: Box::new(expr),
                 })
             }
-            _ => Ok(Expr::Unit),
+            _ => {
+                tracing::error!("Expected expression");
+                return Err(ParseError::ExpectedExpr {
+                    expr: "expression".to_string(),
+                    line: self.lx.line,
+                    col: self.lx.col,
+                });
+            }
         }?;
+        tracing::info!("Found pot lhs :: {:?}", pot_lhs);
 
         match pot_lhs {
             Expr::Var(_)
@@ -75,8 +83,11 @@ impl<'a> Parser<'a> {
             | Expr::FnCall { .. } => {
                 tracing::info!("Parsing binary expr");
                 tracing::info!("Found binary lhs :: {:?}", pot_lhs);
-                let (v1, v2) = self.lx.peek_two_cons_toks_take_init_ws();
+                let (v1, v2) = self.lx.peek_n_no_ws::<2>().splat();
+                tracing::info!("Found binary peek :: {:?}", (&v1));
+
                 let op = CmpOp::from((v1, v2));
+                tracing::info!("Found cmp op :: {:?}", op);
                 let binop = match op {
                     CmpOp::Invalid => return Ok(pot_lhs),
                     _ => self.lx.next_tok().map(BinaryOp::from)?,
@@ -151,7 +162,7 @@ impl<'a> Parser<'a> {
         };
         tracing::info!("Found if LBrace");
 
-        let pot_rbrace = self.lx.peek_tok_ignore_ws();
+        let (pot_rbrace,) = self.lx.peek_n_no_ws::<1>().splat();
 
         let then = if let Some(Tok::RBrace) = pot_rbrace {
             Expr::Unit
@@ -316,6 +327,7 @@ impl<'a> Parser<'a> {
         };
 
         let val = self.parse_expr()?;
+        tracing::info!("Found let val :: {:?}", val);
 
         match self.lx.next_tok() {
             Ok(Tok::SemiColon) => {}
@@ -366,6 +378,7 @@ mod tests {
             #[traced_test]
             #[test]
             fn $name() {
+                tracing::info!("Testing expr :: {}", $src);
                 let lx = crate::lex::Lexer::new($src);
                 let mut parser = Parser::new(lx);
                 let expr = parser.parse_expr();
@@ -383,6 +396,7 @@ mod tests {
             #[traced_test]
             #[test]
             fn $name() {
+                tracing::info!("Testing expr :: {}", $src);
                 let lx = crate::lex::Lexer::new($src);
                 let mut parser = Parser::new(lx);
                 let expr = parser.parse_expr();
@@ -402,6 +416,7 @@ mod tests {
             #[traced_test]
             #[test]
             fn $name() {
+                tracing::info!("Testing decl :: {}", $src);
                 let lx = crate::lex::Lexer::new($src);
                 let mut parser = Parser::new(lx);
                 let decl = parser.parse_let();
@@ -419,6 +434,7 @@ mod tests {
             #[traced_test]
             #[test]
             fn $name() {
+                tracing::info!("Testing decl :: {}", $src);
                 let lx = crate::lex::Lexer::new($src);
                 let mut parser = Parser::new(lx);
                 let decl = parser.parse_let();
@@ -513,7 +529,7 @@ mod tests {
     parse_test!(
         Expr, fail,
         fail_if_no_cond: "if { 5 } else { 6 }", ParseError::ExpectedExpr {
-            expr: "boolean".to_string(),
+            expr: "expression".to_string(),
             line: 0,
             col: 3,
         };
@@ -545,7 +561,7 @@ mod tests {
         fail_if_no_else_rbrace: "if true { 5 } else { 6 ", ParseError::ExpectedToken {
             tok: "}".to_string(),
             line: 0,
-            col: 23,
+            col: 22,
         };
     );
     parse_test!(
@@ -561,7 +577,7 @@ mod tests {
         fail_let_decl: "let x: i32 = 5", ParseError::ExpectedToken {
             tok: ";".to_string(),
             line: 0,
-            col: 14,
+            col: 13,
         };
         fail_let_no_colon: "let x = 5;", ParseError::ExpectedToken {
             tok: ":".to_string(),
@@ -572,6 +588,16 @@ mod tests {
             tok: "identifier".to_string(),
             line: 0,
             col: 7,
+        };
+        fail_let_no_eq: "let x: i32 5;", ParseError::ExpectedToken {
+            tok: "=".to_string(),
+            line: 0,
+            col: 11,
+        };
+        fail_let_no_val: "let x: i32 = ;", ParseError::ExpectedExpr {
+            expr: "expression".to_string(),
+            line: 0,
+            col: 13,
         };
     );
 }

@@ -1,11 +1,11 @@
-use std::{iter::Peekable, str::Chars};
-
 use crate::err::{self, LexError};
 use crate::token::{InitTok, Tok};
+use crate::util::Tuple;
 
-pub struct Lexer<'a> {
-    pub chs: Peekable<Chars<'a>>,
+pub struct Lexer {
+    pub chars: Vec<char>,
     pub errs: Vec<err::LexError>,
+    pub ix: usize,
     pub line: usize,
     pub col: usize,
     fchar: bool,
@@ -34,11 +34,13 @@ macro_rules! check {
         }
     };
 }
-impl<'a> Lexer<'a> {
-    pub fn new(inp: &'a str) -> Lexer<'a> {
+
+impl Lexer {
+    pub fn new<'a>(inp: &'a str) -> Lexer {
         Lexer {
-            chs: inp.chars().peekable(),
+            chars: inp.chars().collect(),
             errs: Vec::new(),
+            ix: 0,
             line: 0,
             col: 0,
             fchar: true,
@@ -128,8 +130,11 @@ impl<'a> Lexer<'a> {
     }
 
     fn take(&mut self) -> Option<char> {
-        let ch = self.chs.next();
-        if ch == Some('\n') {
+        if self.ix >= self.chars.len() {
+            return None;
+        }
+        let ch = self.chars[self.ix];
+        if ch == '\n' || ch == '\r' {
             self.line += 1;
             self.col = 0;
             self.fchar = true;
@@ -140,7 +145,8 @@ impl<'a> Lexer<'a> {
                 self.col += 1;
             }
         }
-        ch
+        self.ix += 1;
+        Some(ch)
     }
 
     fn take_until(&mut self, ch: char) -> String {
@@ -167,32 +173,45 @@ impl<'a> Lexer<'a> {
     }
 
     fn peek(&mut self) -> Option<char> {
-        self.chs.peek().map(|ch| *ch)
+        if self.ix >= self.chars.len() {
+            return None;
+        }
+        Some(self.chars[self.ix])
+    }
+
+    fn peek_nth(&mut self, n: usize) -> Option<char> {
+        if self.ix + n >= self.chars.len() {
+            return None;
+        }
+        Some(self.chars[self.ix + n])
+    }
+
+    pub fn peek_n<const N: usize>(&mut self) -> Tuple<N> {
+        let mut tup = Tuple::new();
+        for i in 0..N {
+            tup.set(i, self.peek().unwrap_or('\0'));
+        }
+        tup
+    }
+
+    pub fn peek_n_no_ws<const N: usize>(&mut self) -> Tuple<N> {
+        let mut tup = Tuple::new();
+        for i in 0..N {
+            let mut tmpix = i;
+            while let Some(tok) = self.peek_nth(tmpix).map(Tok::try_from) {
+                match tok {
+                    Ok(Tok::Ws) | Ok(Tok::Nl) => {
+                        tmpix += 1;
+                    }
+                    _ => break,
+                }
+            }
+            tup.set(i, self.peek_nth(tmpix).unwrap_or('\0'));
+        }
+        tup
     }
 
     pub fn peek_tok(&mut self) -> Option<Tok> {
-        self.peek().map(Tok::from)
-    }
-
-    pub fn next_if(&mut self, tok: Tok) -> Option<Tok> {
-        if let Some(t) = self.peek_tok() {
-            if t == tok {
-                self.take();
-                return Some(t);
-            }
-        }
-        None
-    }
-
-    pub fn peek_tok_ignore_ws(&mut self) -> Option<Tok> {
-        while let Some(tok) = self.peek().map(Tok::try_from) {
-            match tok {
-                Ok(Tok::Ws) | Ok(Tok::Nl) => {
-                    self.take();
-                }
-                _ => break,
-            }
-        }
         self.peek().map(Tok::from)
     }
 
@@ -206,20 +225,6 @@ impl<'a> Lexer<'a> {
             }
         }
         self.peek().map(Tok::from)
-    }
-
-    pub fn peek_two_cons_toks_take_init_ws(&mut self) -> (Option<Tok>, Option<Tok>) {
-        while let Some(tok) = self.peek().map(Tok::try_from) {
-            match tok {
-                Ok(Tok::Ws) | Ok(Tok::Nl) => {
-                    self.take();
-                }
-                _ => break,
-            }
-        }
-        let tok1 = self.peek().map(Tok::from);
-        let tok2 = self.peek().map(Tok::from);
-        (tok1, tok2)
     }
 
     fn skip_ws(&mut self) {

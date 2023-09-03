@@ -150,6 +150,20 @@ impl From<Tok> for CmpOp {
     }
 }
 
+impl From<Option<Tok>> for CmpOp {
+    fn from(value: Option<Tok>) -> Self {
+        match value {
+            Some(Tok::Deq) => CmpOp::Eq,
+            Some(Tok::Neq) => CmpOp::Neq,
+            Some(Tok::Gt) => CmpOp::Gt,
+            Some(Tok::Lt) => CmpOp::Lt,
+            Some(Tok::Geq) => CmpOp::Geq,
+            Some(Tok::Leq) => CmpOp::Leq,
+            _ => CmpOp::Invalid,
+        }
+    }
+}
+
 impl From<(Tok, Tok)> for CmpOp {
     fn from(value: (Tok, Tok)) -> Self {
         match value {
