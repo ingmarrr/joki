@@ -172,6 +172,36 @@ impl Lexer {
         buf.to_owned()
     }
 
+    fn buf_take(&mut self) -> Option<char> {
+        if self.ix >= self.chars.len() {
+            return None;
+        }
+        Some(self.chars[self.ix])
+    }
+
+    fn buf_take_until(&mut self, ch: char) -> String {
+        let mut s = String::new();
+        while let Some(c) = self.peek() {
+            if c == ch {
+                break;
+            }
+            s.push(c);
+            self.take();
+        }
+        s
+    }
+
+    fn buf_take_while(&mut self, starting: char, f: impl Fn(Tok) -> bool) -> String {
+        let mut buf = format!("{}", starting);
+        while let Some(c) = self.peek() {
+            if !f(Tok::from(c)) {
+                break;
+            }
+            buf.push(c);
+        }
+        buf.to_owned()
+    }
+
     fn peek(&mut self) -> Option<char> {
         if self.ix >= self.chars.len() {
             return None;
@@ -209,22 +239,6 @@ impl Lexer {
             tup.set(i, self.peek_nth(tmpix).unwrap_or('\0'));
         }
         tup
-    }
-
-    pub fn peek_tok(&mut self) -> Option<Tok> {
-        self.peek().map(Tok::from)
-    }
-
-    pub fn peek_tok_take_ws(&mut self) -> Option<Tok> {
-        while let Some(tok) = self.peek().map(Tok::try_from) {
-            match tok {
-                Ok(Tok::Ws) | Ok(Tok::Nl) => {
-                    self.take();
-                }
-                _ => break,
-            }
-        }
-        self.peek().map(Tok::from)
     }
 
     fn skip_ws(&mut self) {
