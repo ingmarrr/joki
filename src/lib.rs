@@ -5,4 +5,3 @@ pub mod lex;
 pub mod log;
 pub mod parser;
 pub mod token;
-pub mod util;

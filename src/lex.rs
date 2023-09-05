@@ -1,7 +1,6 @@
 use crate::ast::IntBase;
 use crate::err::{self, LexError};
 use crate::token::{InitTok, Tok};
-use crate::util::Tuple;
 
 macro_rules! check {
     ($self:ident, $($ch:literal => $tok:expr),*; $else:expr) => {
@@ -394,36 +393,6 @@ impl Lexer {
         buf.to_owned()
     }
 
-    // fn buf_take(&mut self) -> Option<char> {
-    //     if self.cx.ix >= self.chars.len() {
-    //         return None;
-    //     }
-    //     Some(self.chars[self.cx.ix])
-    // }
-
-    // fn buf_take_until(&mut self, ch: char) -> String {
-    //     let mut s = String::new();
-    //     while let Some(c) = self.peek() {
-    //         if c == ch {
-    //             break;
-    //         }
-    //         s.push(c);
-    //         self.take();
-    //     }
-    //     s
-    // }
-
-    // fn buf_take_while(&mut self, starting: char, f: impl Fn(Tok) -> bool) -> String {
-    //     let mut buf = format!("{}", starting);
-    //     while let Some(c) = self.peek() {
-    //         if !f(Tok::from(c)) {
-    //             break;
-    //         }
-    //         buf.push(c);
-    //     }
-    //     buf.to_owned()
-    // }
-
     fn peek(&mut self) -> Option<char> {
         if self.cx.ix >= self.chars.len() {
             return None;
@@ -444,31 +413,6 @@ impl Lexer {
             return None;
         }
         Some(self.chars[self.cx.ix + n])
-    }
-
-    pub fn peek_n<const N: usize>(&mut self) -> Tuple<N> {
-        let mut tup = Tuple::new();
-        for i in 0..N {
-            tup.set(i, self.peek().unwrap_or('\0'));
-        }
-        tup
-    }
-
-    pub fn peek_n_no_ws<const N: usize>(&mut self) -> Tuple<N> {
-        let mut tup = Tuple::new();
-        for i in 0..N {
-            let mut tmpix = i;
-            while let Some(tok) = self.peek_nth(tmpix).map(Tok::try_from) {
-                match tok {
-                    Ok(Tok::Ws) | Ok(Tok::Nl) => {
-                        tmpix += 1;
-                    }
-                    _ => break,
-                }
-            }
-            tup.set(i, self.peek_nth(tmpix).unwrap_or('\0'));
-        }
-        tup
     }
 
     fn skip_ws(&mut self) {
