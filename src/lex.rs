@@ -20,29 +20,28 @@ macro_rules! check {
                 }
             }
             None => Err(LexError::UnexpectedEOF {
-                line: $self.line,
-                col: $self.col,
+                line: $self.cx.line,
+                col: $self.cx.col,
             }),
         }
     };
 }
 
+#[derive(Debug, Clone, PartialEq)]
 pub struct Cx {
     ix: usize,
     ch: char,
-    line: usize,
-    col: usize,
+    fchar: bool,
+    pub line: usize,
+    pub col: usize,
 }
 
 pub struct Lexer {
     pub errs: Vec<err::LexError>,
     pub toks: Vec<Tok>,
-    pub line: usize,
-    pub col: usize,
+    pub cx: Cx,
+    pub tmpcx: Option<Cx>,
     chars: Vec<char>,
-    ix: usize,
-    ch: char,
-    fchar: bool,
 }
 
 impl Lexer {
@@ -51,11 +50,14 @@ impl Lexer {
             chars: inp.chars().collect(),
             errs: Vec::new(),
             toks: Vec::new(),
-            ix: 0,
-            ch: '\0',
-            line: 0,
-            col: 0,
-            fchar: true,
+            cx: Cx {
+                ix: 0,
+                ch: '\0',
+                line: 0,
+                col: 0,
+                fchar: true,
+            },
+            tmpcx: None,
         }
     }
 
@@ -73,19 +75,43 @@ impl Lexer {
     }
 
     pub fn next_token(&mut self) -> Result<Tok, LexError> {
+        if let Some(cx) = &self.tmpcx {
+            self.cx = cx.clone();
+            self.tmpcx = None;
+        }
+        self._next_token()
+    }
+
+    /// Peeks the next token by using a temporary context
+    /// This function can be called as many times in a row as there
+    /// are tokens in the input. It will not advance the context.
+    /// Once the `next_token` function is called, the temporary context will
+    /// be reset to the current context.
+    pub fn lookahead(&mut self) -> Result<Tok, LexError> {
+        if let None = self.tmpcx {
+            self.tmpcx = Some(self.cx.clone());
+        }
+        self._next_token()
+    }
+
+    fn _next_token(&mut self) -> Result<Tok, LexError> {
         self.skip_ws();
         loop {
-            self.ch = self.take().unwrap_or('\0');
-            let tok = Tok::from(self.ch);
+            self.cx.ch = self.take().unwrap_or('\0');
+            let tok = Tok::from(self.cx.ch);
             if let Tok::EOF = tok {
                 return Ok(Tok::EOF);
             }
             if let Tok::Invalid = tok {
-                self.errs.push(err::LexError::InvalidToken {
-                    line: self.line,
-                    col: self.col,
-                });
-                tracing::error!("Invalid token at line {}, col {}", self.line, self.col);
+                // self.errs.push(err::LexError::InvalidToken {
+                //     line: self.cx.line,
+                //     col: self.cx.col,
+                // });
+                tracing::error!(
+                    "Invalid token at line {}, col {}",
+                    self.cx.line,
+                    self.cx.col
+                );
             };
 
             let itok = match InitTok::try_from(&tok) {
@@ -103,10 +129,10 @@ impl Lexer {
                 InitTok::DQ => self.lx_str(),
                 InitTok::Dot => self.lx_dot(),
                 InitTok::Slash => self.lx_slash(),
-                InitTok::Plus => check!(self, '=' => Tok::AddEq; Tok::Plus),
-                InitTok::Minus => check!(self, '=' => Tok::SubEq; Tok::Minus),
-                InitTok::Star => check!(self, '=' => Tok::MulEq; Tok::Star),
-                InitTok::Eq => check!(self, '=' => Tok::Deq; Tok::Eq),
+                InitTok::Plus => check!(self,  '=' => Tok::AddEq; Tok::Plus),
+                InitTok::Minus => check!(self,  '=' => Tok::SubEq; Tok::Minus),
+                InitTok::Star => check!(self,  '=' => Tok::MulEq; Tok::Star),
+                InitTok::Eq => check!(self,  '=' => Tok::Deq; Tok::Eq),
                 InitTok::Bang => check!(self, '=' => Tok::Neq; Tok::Bang),
                 InitTok::Lt => check!(self, '=' => Tok::Leq, '<' => Tok::Lsl; Tok::Lt),
                 InitTok::Gt => check!(self, '=' => Tok::Geq, '>' => Tok::Lsr; Tok::Gt),
@@ -117,7 +143,7 @@ impl Lexer {
 
     // TODO! Add tests
     fn lx_num(&mut self) -> Result<Tok, LexError> {
-        match self.ch {
+        match self.cx.ch {
             '0' => {
                 let peek = self.peek();
                 match peek {
@@ -130,7 +156,7 @@ impl Lexer {
                             _ => unreachable!(),
                         };
                         let mut num: String = '0'.into();
-                        num.push(self.ch);
+                        num.push(self.cx.ch);
                         num.push(self.take().unwrap());
                         while let Some(ch) = self.peek() {
                             if ch.is_digit(base) {
@@ -142,8 +168,8 @@ impl Lexer {
 
                         if num.len() == 2 {
                             return Err(LexError::MissingIntegerLiteral {
-                                line: self.line,
-                                col: self.col,
+                                line: self.cx.line,
+                                col: self.cx.col,
                             });
                         }
 
@@ -158,8 +184,8 @@ impl Lexer {
                     }
                     _ => {
                         return Err(LexError::InvalidNumberFormat {
-                            line: self.line,
-                            col: self.col,
+                            line: self.cx.line,
+                            col: self.cx.col,
                         })
                     }
                 };
@@ -167,7 +193,7 @@ impl Lexer {
             _ => {}
         };
 
-        let mut buf = format!("{}", self.ch);
+        let mut buf = format!("{}", self.cx.ch);
         let base = 10;
         let mut size = 1;
 
@@ -256,8 +282,8 @@ impl Lexer {
         let buf = self.take_until('\'');
         if buf.len() > 1 || buf.len() == 0 {
             return Err(LexError::InvalidCharLiteral {
-                line: self.line,
-                col: self.col,
+                line: self.cx.line,
+                col: self.cx.col,
             });
         }
         let ch = buf.chars().next().unwrap();
@@ -326,22 +352,22 @@ impl Lexer {
     }
 
     fn take(&mut self) -> Option<char> {
-        if self.ix >= self.chars.len() {
+        if self.cx.ix >= self.chars.len() {
             return None;
         }
-        let ch = self.chars[self.ix];
+        let ch = self.chars[self.cx.ix];
         if ch == '\n' || ch == '\r' {
-            self.line += 1;
-            self.col = 0;
-            self.fchar = true;
+            self.cx.line += 1;
+            self.cx.col = 0;
+            self.cx.fchar = true;
         } else {
-            if self.fchar {
-                self.fchar = false
+            if self.cx.fchar {
+                self.cx.fchar = false
             } else {
-                self.col += 1;
+                self.cx.col += 1;
             }
         }
-        self.ix += 1;
+        self.cx.ix += 1;
         Some(ch)
     }
 
@@ -357,7 +383,7 @@ impl Lexer {
     }
 
     fn take_while(&mut self, f: impl Fn(Tok) -> bool) -> String {
-        let mut buf = format!("{}", self.ch);
+        let mut buf = format!("{}", self.cx.ch);
         while let Some(c) = self.peek() {
             if !f(Tok::from(c)) {
                 break;
@@ -369,10 +395,10 @@ impl Lexer {
     }
 
     // fn buf_take(&mut self) -> Option<char> {
-    //     if self.ix >= self.chars.len() {
+    //     if self.cx.ix >= self.chars.len() {
     //         return None;
     //     }
-    //     Some(self.chars[self.ix])
+    //     Some(self.chars[self.cx.ix])
     // }
 
     // fn buf_take_until(&mut self, ch: char) -> String {
@@ -399,10 +425,10 @@ impl Lexer {
     // }
 
     fn peek(&mut self) -> Option<char> {
-        if self.ix >= self.chars.len() {
+        if self.cx.ix >= self.chars.len() {
             return None;
         }
-        Some(self.chars[self.ix])
+        Some(self.chars[self.cx.ix])
     }
 
     /// Peeks the nth character ahead
@@ -414,10 +440,10 @@ impl Lexer {
     /// peeking 1 will return the second character. From that ix will always
     /// be increased when taking a character, so the offset continues
     fn peek_nth(&mut self, n: usize) -> Option<char> {
-        if self.ix + n >= self.chars.len() {
+        if self.cx.ix + n >= self.chars.len() {
             return None;
         }
-        Some(self.chars[self.ix + n])
+        Some(self.chars[self.cx.ix + n])
     }
 
     pub fn peek_n<const N: usize>(&mut self) -> Tuple<N> {

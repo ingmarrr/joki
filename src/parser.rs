@@ -1,6 +1,7 @@
 use crate::{
     ast::{BinaryOp, BuiltIn, CmpOp, Decl, Expr, Stmt, Type, UnaryOp},
     err::ParseError,
+    log,
     token::Tok,
 };
 
@@ -63,8 +64,8 @@ impl Parser {
             _ => {
                 return Err(ParseError::ExpectedExpr {
                     expr: "expression".to_string(),
-                    line: self.lx.line,
-                    col: self.lx.col,
+                    line: self.lx.cx.line,
+                    col: self.lx.cx.col,
                 });
             }
         }?;
@@ -80,10 +81,12 @@ impl Parser {
             | Expr::FnCall { .. } => {
                 tracing::info!("Parsing binary expr");
                 tracing::info!("Found binary lhs :: {:?}", pot_lhs);
-                let (v1, v2) = self.lx.peek_n_no_ws::<2>().splat();
-                tracing::info!("Found binary peek :: {:?}", (&v1));
+                // let (v1, v2) = self.lx.peek_n_no_ws::<2>().splat();
+                let tok = self.lx.lookahead()?;
+                info!(LA, "{:#?}", tok);
+                let op = CmpOp::from(tok);
 
-                let op = CmpOp::from((v1, v2));
+                // let op = CmpOp::from((v1, v2));
                 tracing::info!("Found cmp op :: {:?}", op);
                 let binop = match op {
                     CmpOp::Invalid => return Ok(pot_lhs),
@@ -120,8 +123,8 @@ impl Parser {
                     tracing::error!("Expected comparison operator");
                     return Err(ParseError::ExpectedExpr {
                         expr: "boolean".to_string(),
-                        line: self.lx.line,
-                        col: self.lx.col,
+                        line: self.lx.cx.line,
+                        col: self.lx.cx.col,
                     });
                 }
             },
@@ -130,8 +133,8 @@ impl Parser {
                 _ => {
                     return Err(ParseError::ExpectedExpr {
                         expr: "boolean".to_string(),
-                        line: self.lx.line,
-                        col: self.lx.col,
+                        line: self.lx.cx.line,
+                        col: self.lx.cx.col,
                     })
                 }
             },
@@ -139,8 +142,8 @@ impl Parser {
             _ => {
                 return Err(ParseError::ExpectedExpr {
                     expr: "boolean".to_string(),
-                    line: self.lx.line,
-                    col: self.lx.col,
+                    line: self.lx.cx.line,
+                    col: self.lx.cx.col,
                 })
             }
         };
@@ -152,16 +155,16 @@ impl Parser {
                 tracing::error!("Expected `{{`");
                 return Err(ParseError::ExpectedToken {
                     tok: "{".to_string(),
-                    line: self.lx.line,
-                    col: self.lx.col,
+                    line: self.lx.cx.line,
+                    col: self.lx.cx.col,
                 });
             }
         };
         tracing::info!("Found if LBrace");
 
-        let (pot_rbrace,) = self.lx.peek_n_no_ws::<1>().splat();
+        let pot_rbrace = self.lx.lookahead()?;
 
-        let then = if let Some(Tok::RBrace) = pot_rbrace {
+        let then = if let Tok::RBrace = pot_rbrace {
             Expr::Unit
         } else {
             let e = self.parse_expr()?;
@@ -177,8 +180,8 @@ impl Parser {
                 tracing::error!("Expected expression");
                 return Err(ParseError::ExpectedToken {
                     tok: "}".to_string(),
-                    line: self.lx.line,
-                    col: self.lx.col,
+                    line: self.lx.cx.line,
+                    col: self.lx.cx.col,
                 });
             }
         };
@@ -192,8 +195,8 @@ impl Parser {
                         Ok(Expr::Unit) => {
                             return Err(ParseError::ExpectedExpr {
                                 expr: "expression".to_string(),
-                                line: self.lx.line,
-                                col: self.lx.col,
+                                line: self.lx.cx.line,
+                                col: self.lx.cx.col,
                             });
                         }
                         Ok(e) => e,
@@ -205,8 +208,8 @@ impl Parser {
                         _ => {
                             return Err(ParseError::ExpectedToken {
                                 tok: "}".to_string(),
-                                line: self.lx.line,
-                                col: self.lx.col,
+                                line: self.lx.cx.line,
+                                col: self.lx.cx.col,
                             });
                         }
                     };
@@ -216,16 +219,16 @@ impl Parser {
                 _ => {
                     return Err(ParseError::ExpectedToken {
                         tok: "{".to_string(),
-                        line: self.lx.line,
-                        col: self.lx.col,
+                        line: self.lx.cx.line,
+                        col: self.lx.cx.col,
                     });
                 }
             },
             Ok(Tok::LBrace) => {
                 return Err(ParseError::ExpectedKeyword {
                     kw: "else".to_string(),
-                    line: self.lx.line,
-                    col: self.lx.col,
+                    line: self.lx.cx.line,
+                    col: self.lx.cx.col,
                 });
             }
             _ => None,
@@ -250,8 +253,8 @@ impl Parser {
                 tracing::error!("Expected `let`");
                 return Err(ParseError::ExpectedToken {
                     tok: "let".to_string(),
-                    line: self.lx.line,
-                    col: self.lx.col,
+                    line: self.lx.cx.line,
+                    col: self.lx.cx.col,
                 });
             }
         };
@@ -262,8 +265,8 @@ impl Parser {
                 tracing::error!("Expected identifier");
                 return Err(ParseError::ExpectedToken {
                     tok: "identifier".to_string(),
-                    line: self.lx.line,
-                    col: self.lx.col,
+                    line: self.lx.cx.line,
+                    col: self.lx.cx.col,
                 });
             }
         };
@@ -273,8 +276,8 @@ impl Parser {
             _ => {
                 return Err(ParseError::ExpectedToken {
                     tok: ":".to_string(),
-                    line: self.lx.line,
-                    col: self.lx.col,
+                    line: self.lx.cx.line,
+                    col: self.lx.cx.col,
                 })
             }
         };
@@ -291,8 +294,8 @@ impl Parser {
                         _ => {
                             return Err(ParseError::ExpectedToken {
                                 tok: ")".to_string(),
-                                line: self.lx.line,
-                                col: self.lx.col,
+                                line: self.lx.cx.line,
+                                col: self.lx.cx.col,
                             })
                         }
                     };
@@ -306,8 +309,8 @@ impl Parser {
             _ => {
                 return Err(ParseError::ExpectedToken {
                     tok: "identifier".to_string(),
-                    line: self.lx.line,
-                    col: self.lx.col,
+                    line: self.lx.cx.line,
+                    col: self.lx.cx.col,
                 })
             }
         };
@@ -317,8 +320,8 @@ impl Parser {
             _ => {
                 return Err(ParseError::ExpectedToken {
                     tok: "=".to_string(),
-                    line: self.lx.line,
-                    col: self.lx.col,
+                    line: self.lx.cx.line,
+                    col: self.lx.cx.col,
                 })
             }
         };
@@ -331,13 +334,21 @@ impl Parser {
             _ => {
                 return Err(ParseError::ExpectedToken {
                     tok: ";".to_string(),
-                    line: self.lx.line,
-                    col: self.lx.col,
+                    line: self.lx.cx.line,
+                    col: self.lx.cx.col,
                 })
             }
         };
 
         Ok(Decl::Var { name, ty, val })
+    }
+
+    fn parse_fn(&mut self) -> Result<Decl, ParseError> {
+        Err(ParseError::ExpectedToken {
+            tok: "fn".to_string(),
+            line: self.lx.cx.line,
+            col: self.lx.cx.col,
+        })
     }
 
     fn parse_ident(&mut self, ident: String) -> Result<Expr, ParseError> {
