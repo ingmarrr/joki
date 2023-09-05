@@ -26,7 +26,7 @@ impl Parser {
     }
 
     fn next_decl(&mut self) -> Option<Decl> {
-        let tok = self.lx.next_tok();
+        let tok = self.lx.next_token();
 
         if let Err(_) = tok {
             return None;
@@ -42,15 +42,13 @@ impl Parser {
     }
 
     fn parse_expr(&mut self) -> Result<Expr, ParseError> {
-        let tok = self.lx.next_tok()?;
+        let tok = self.lx.next_token()?;
 
         let pot_lhs = match tok {
-            Tok::Scalar(i) => match i.contains('.') {
-                true => Ok(Expr::LitFloat(i)), // Todo ! check if valid float
-                false => Ok(Expr::LitInt(i)),
-            },
-            Tok::String(s) => Ok(Expr::LitString(s)),
-            Tok::Char(c) => Ok(Expr::LitChar(c)),
+            Tok::LitInt { buf, size, base } => Ok(Expr::LitInt { buf, size, base }),
+            Tok::LitFloat { buf, size } => Ok(Expr::LitFloat { buf, size }),
+            Tok::LitString { buf, size } => Ok(Expr::LitString { buf, size }),
+            Tok::LitChar(c) => Ok(Expr::LitChar(c)),
             Tok::True => Ok(Expr::LitBool(true)),
             Tok::False => Ok(Expr::LitBool(false)),
             Tok::If => self.parse_if(),
@@ -63,7 +61,6 @@ impl Parser {
                 })
             }
             _ => {
-                tracing::error!("Expected expression");
                 return Err(ParseError::ExpectedExpr {
                     expr: "expression".to_string(),
                     line: self.lx.line,
@@ -71,15 +68,15 @@ impl Parser {
                 });
             }
         }?;
-        tracing::info!("Found pot lhs :: {:?}", pot_lhs);
+        tracing::info!("Found potential lhs :: {:?}", pot_lhs);
 
         match pot_lhs {
             Expr::Var(_)
-            | Expr::LitInt(_)
+            | Expr::LitInt { .. }
             | Expr::LitBool(_)
-            | Expr::LitFloat(_)
+            | Expr::LitFloat { .. }
             | Expr::LitChar(_)
-            | Expr::LitString(_)
+            | Expr::LitString { .. }
             | Expr::FnCall { .. } => {
                 tracing::info!("Parsing binary expr");
                 tracing::info!("Found binary lhs :: {:?}", pot_lhs);
@@ -90,7 +87,7 @@ impl Parser {
                 tracing::info!("Found cmp op :: {:?}", op);
                 let binop = match op {
                     CmpOp::Invalid => return Ok(pot_lhs),
-                    _ => self.lx.next_tok().map(BinaryOp::from)?,
+                    _ => self.lx.next_token().map(BinaryOp::from)?,
                 };
                 tracing::info!("Found binary op :: {:?}", binop);
                 let rhs = self.parse_expr()?;
@@ -149,7 +146,7 @@ impl Parser {
         };
         tracing::info!("Found if condition :: {:?}", cond);
 
-        match self.lx.next_tok() {
+        match self.lx.next_token() {
             Ok(Tok::LBrace) => {}
             _ => {
                 tracing::error!("Expected `{{`");
@@ -172,7 +169,7 @@ impl Parser {
         };
         tracing::info!("Parsed if then :: {:?}", then);
 
-        let nxt = self.lx.next_tok();
+        let nxt = self.lx.next_token();
         match nxt {
             Ok(Tok::RBrace) => {}
             _ => {
@@ -187,8 +184,8 @@ impl Parser {
         };
         tracing::info!("Found if RBrace");
 
-        let els = match self.lx.next_tok() {
-            Ok(Tok::Else) => match self.lx.next_tok() {
+        let els = match self.lx.next_token() {
+            Ok(Tok::Else) => match self.lx.next_token() {
                 Ok(Tok::LBrace) => {
                     tracing::info!("Found else LBrace");
                     let els = match self.parse_expr() {
@@ -203,7 +200,7 @@ impl Parser {
                         Err(e) => return Err(e),
                     };
 
-                    match self.lx.next_tok() {
+                    match self.lx.next_token() {
                         Ok(Tok::RBrace) => tracing::info!("Found else RBrace"),
                         _ => {
                             return Err(ParseError::ExpectedToken {
@@ -247,7 +244,7 @@ impl Parser {
 
     fn parse_let(&mut self) -> Result<Decl, ParseError> {
         tracing::info!("Parsing let decl");
-        match self.lx.next_tok() {
+        match self.lx.next_token() {
             Ok(Tok::Let) => {}
             _ => {
                 tracing::error!("Expected `let`");
@@ -259,7 +256,7 @@ impl Parser {
             }
         };
 
-        let name = match self.lx.next_tok() {
+        let name = match self.lx.next_token() {
             Ok(Tok::Ident(s)) => s,
             _ => {
                 tracing::error!("Expected identifier");
@@ -271,7 +268,7 @@ impl Parser {
             }
         };
 
-        match self.lx.next_tok() {
+        match self.lx.next_token() {
             Ok(Tok::Colon) => {}
             _ => {
                 return Err(ParseError::ExpectedToken {
@@ -282,12 +279,12 @@ impl Parser {
             }
         };
 
-        let ty = match self.lx.next_tok() {
+        let ty = match self.lx.next_token() {
             Ok(Tok::Ident(s)) => Type::from(s),
             Ok(Tok::LParen) => {
                 let mut types = Vec::new();
                 loop {
-                    match self.lx.next_tok() {
+                    match self.lx.next_token() {
                         Ok(Tok::Ident(s)) => types.push(Type::from(s)),
                         Ok(Tok::RParen) => break,
                         Ok(Tok::Comma) => continue,
@@ -315,7 +312,7 @@ impl Parser {
             }
         };
 
-        match self.lx.next_tok() {
+        match self.lx.next_token() {
             Ok(Tok::Eq) => {}
             _ => {
                 return Err(ParseError::ExpectedToken {
@@ -329,7 +326,7 @@ impl Parser {
         let val = self.parse_expr()?;
         tracing::info!("Found let val :: {:?}", val);
 
-        match self.lx.next_tok() {
+        match self.lx.next_token() {
             Ok(Tok::SemiColon) => {}
             _ => {
                 return Err(ParseError::ExpectedToken {
@@ -346,11 +343,11 @@ impl Parser {
     fn parse_ident(&mut self, ident: String) -> Result<Expr, ParseError> {
         tracing::info!("Parsing ident");
 
-        match self.lx.next_tok() {
+        match self.lx.next_token() {
             Ok(Tok::LParen) => {
                 let mut args = Vec::new();
                 loop {
-                    match self.lx.next_tok() {
+                    match self.lx.next_token() {
                         Ok(Tok::RParen) => break,
                         Ok(Tok::Comma) => continue,
                         _ => {
@@ -369,7 +366,7 @@ impl Parser {
 mod tests {
     use tracing_test::traced_test;
 
-    use crate::ast::IntKind;
+    use crate::ast::{IntBase, IntKind};
 
     use super::*;
 
@@ -452,52 +449,52 @@ mod tests {
 
     parse_test!(
         Expr, must,
-        i_lit: "5", Expr::LitInt("5".to_string());
-        f_lit: "5.0", Expr::LitFloat("5.0".to_string());
-        string_lit: "\"hello\"", Expr::LitString("hello".to_string());
-        char_lit: "'c'", Expr::LitChar("c".to_string());
+        i_lit: "5", Expr::LitInt{ buf: "5".to_string(), size: 1, base: IntBase::Dec };
+        f_lit: "5.0", Expr::LitFloat{ buf: "5.0".to_string(), size: 3 };
+        string_lit: "\"hello\"", Expr::LitString{ buf: "hello".to_string(), size: 5 };
+        char_lit: "'c'", Expr::LitChar('c');
         true_lit: "true", Expr::LitBool(true);
         false_lit: "false", Expr::LitBool(false);
         if_expr: "if true { 5 } else { 6 }", Expr::If {
             cond: Box::new(Expr::LitBool(true)),
-            then: Box::new(Expr::LitInt("5".to_string())),
-            els: Some(Box::new(Expr::LitInt("6".to_string()))),
+            then: Box::new(Expr::LitInt{ buf: "5".to_string(), size: 1, base: IntBase::Dec }),
+            els: Some(Box::new(Expr::LitInt{ buf: "6".to_string(), size: 1, base: IntBase::Dec })),
         };
         if_expr_no_else: "if true { 5 }", Expr::If {
             cond: Box::new(Expr::LitBool(true)),
-            then: Box::new(Expr::LitInt("5".to_string())),
+            then: Box::new(Expr::LitInt{ buf: "5".to_string(), size: 1, base: IntBase::Dec }),
             els: None,
         };
         if_no_then: "if true { } else { 6 }", Expr::If {
             cond: Box::new(Expr::LitBool(true)),
             then: Box::new(Expr::Unit),
-            els: Some(Box::new(Expr::LitInt("6".to_string()))),
+            els: Some(Box::new(Expr::LitInt{ buf: "6".to_string(), size: 1, base: IntBase::Dec })),
         };
         if_expr_with_cmp: "if 5 == 5 { 'a' } else { 'b' }", Expr::If {
             cond: Box::new(Expr::Binary {
                 op: BinaryOp::Eq,
-                lhs: Box::new(Expr::LitInt("5".to_string())),
-                rhs: Box::new(Expr::LitInt("5".to_string())),
+                lhs: Box::new(Expr::LitInt{ buf: "5".to_string(), size: 1, base: IntBase::Dec }),
+                rhs: Box::new(Expr::LitInt{ buf: "5".to_string(), size: 1, base: IntBase::Dec }),
             }),
-            then: Box::new(Expr::LitChar("a".to_string())),
-            els: Some(Box::new(Expr::LitChar("b".to_string()))),
+            then: Box::new(Expr::LitChar('a')),
+            els: Some(Box::new(Expr::LitChar('b'))),
         };
         if_expr_with_cmp_and_unary: "if !5 == 5 { 5 } else { 6 }", Expr::If {
             cond: Box::new(Expr::Unary {
                 op: UnaryOp::Not,
                 expr: Box::new(Expr::Binary {
                     op: BinaryOp::Eq,
-                    lhs: Box::new(Expr::LitInt("5".to_string())),
-                    rhs: Box::new(Expr::LitInt("5".to_string())),
+                    lhs: Box::new(Expr::LitInt{ buf: "5".to_string(), size: 1, base: IntBase::Dec }),
+                    rhs: Box::new(Expr::LitInt{ buf: "5".to_string(), size: 1, base: IntBase::Dec }),
                 }),
             }),
-            then: Box::new(Expr::LitInt("5".to_string())),
-            els: Some(Box::new(Expr::LitInt("6".to_string()))),
+            then: Box::new(Expr::LitInt{ buf: "5".to_string(), size: 1, base: IntBase::Dec }),
+            els: Some(Box::new(Expr::LitInt{ buf: "6".to_string(), size: 1, base: IntBase::Dec })),
         };
         if_expr_with_fn_call: "if foo() { 5 } else { 6 }", Expr::If {
             cond: Box::new(Expr::FnCall { name: "foo".to_string(), args: Vec::new() }),
-            then: Box::new(Expr::LitInt("5".to_string())),
-            els: Some(Box::new(Expr::LitInt("6".to_string()))),
+            then: Box::new(Expr::LitInt{ buf: "5".to_string(), size: 1, base: IntBase::Dec }),
+            els: Some(Box::new(Expr::LitInt{ buf: "6".to_string(), size: 1, base: IntBase::Dec })),
         };
         if_expr_with_fn_call_and_cmp: "if foo() == 5 { 5 } else { 6 }", Expr::If {
             cond: Box::new(Expr::Binary {
@@ -506,10 +503,10 @@ mod tests {
                     name: "foo".to_string(),
                     args: Vec::new(),
                 }),
-                rhs: Box::new(Expr::LitInt("5".to_string())),
+                rhs: Box::new(Expr::LitInt{ buf: "5".to_string(), size: 1, base: IntBase::Dec }),
             }),
-            then: Box::new(Expr::LitInt("5".to_string())),
-            els: Some(Box::new(Expr::LitInt("6".to_string()))),
+            then: Box::new(Expr::LitInt{ buf: "5".to_string(), size: 1, base: IntBase::Dec }),
+            els: Some(Box::new(Expr::LitInt{ buf: "6".to_string(), size: 1, base: IntBase::Dec })),
         };
         if_expr_with_fn_call_and_cmp_and_unary: "if !foo() == 5 { 5 } else { 6 }", Expr::If {
             cond: Box::new(Expr::Unary {
@@ -520,10 +517,10 @@ mod tests {
                     name: "foo".to_string(),
                     args: Vec::new(),
                 }),
-                rhs: Box::new(Expr::LitInt("5".to_string())),
+                rhs: Box::new(Expr::LitInt{ buf: "5".to_string(), size: 1, base: IntBase::Dec }),
             })}),
-            then: Box::new(Expr::LitInt("5".to_string())),
-            els: Some(Box::new(Expr::LitInt("6".to_string()))),
+            then: Box::new(Expr::LitInt{ buf: "5".to_string(), size: 1, base: IntBase::Dec }),
+            els: Some(Box::new(Expr::LitInt{ buf: "6".to_string(), size: 1, base: IntBase::Dec })),
         };
     );
     parse_test!(
@@ -569,7 +566,7 @@ mod tests {
         let_decl: "let x: i32 = 5;", Decl::Var {
             name: "x".to_string(),
             ty: Type::BuiltIn(BuiltIn::Int(IntKind::I32)),
-            val: Expr::LitInt("5".to_string()),
+            val: Expr::LitInt{ buf: "5".to_string(), size: 1, base: IntBase::Dec },
         };
     );
     parse_test!(

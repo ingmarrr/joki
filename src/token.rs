@@ -1,11 +1,13 @@
-use crate::err;
+use crate::{ast::IntBase, err::LexError};
 
 #[derive(Debug, PartialEq)]
 pub enum TokKind {
     Ident,
-    Char,
-    String,
-    Scalar,
+    Comment,
+    LitChar,
+    LitString,
+    LitInt,
+    LitFloat,
     Alpha,
     Num,
 
@@ -33,7 +35,6 @@ pub enum TokKind {
     Or,
     Caret,
     Wave,
-    Comment,
 
     LParen,
     RParen,
@@ -45,6 +46,8 @@ pub enum TokKind {
     Colon,
     SemiColon,
     DoubleColon,
+    RangeEx,
+    RangeInc,
     Comma,
     Bang,
     Ques,
@@ -89,9 +92,11 @@ impl From<Tok> for TokKind {
     fn from(value: Tok) -> Self {
         match value {
             Tok::Ident(_) => TokKind::Ident,
-            Tok::Char(_) => TokKind::Char,
-            Tok::String(_) => TokKind::String,
-            Tok::Scalar(_) => TokKind::Scalar,
+            Tok::Comment(_) => TokKind::Comment,
+            Tok::LitChar(_) => TokKind::LitChar,
+            Tok::LitString { .. } => TokKind::LitString,
+            Tok::LitFloat { .. } => TokKind::LitFloat,
+            Tok::LitInt { .. } => TokKind::LitInt,
             Tok::Alpha(_) => TokKind::Alpha,
             Tok::Num(_) => TokKind::Num,
 
@@ -119,7 +124,6 @@ impl From<Tok> for TokKind {
             Tok::Or => TokKind::Or,
             Tok::Caret => TokKind::Caret,
             Tok::Tilde => TokKind::Wave,
-            Tok::Comment => TokKind::Comment,
 
             Tok::LParen => TokKind::LParen,
             Tok::RParen => TokKind::RParen,
@@ -131,6 +135,8 @@ impl From<Tok> for TokKind {
             Tok::Colon => TokKind::Colon,
             Tok::SemiColon => TokKind::SemiColon,
             Tok::DoubleColon => TokKind::DoubleColon,
+            Tok::RangeEx => TokKind::RangeEx,
+            Tok::RangeInc => TokKind::RangeInc,
             Tok::Comma => TokKind::Comma,
             Tok::Bang => TokKind::Bang,
             Tok::Ques => TokKind::Ques,
@@ -176,9 +182,21 @@ impl From<Tok> for TokKind {
 #[derive(Debug, PartialEq)]
 pub enum Tok {
     Ident(String),
-    Char(String),
-    String(String),
-    Scalar(String),
+    Comment(String),
+    LitChar(char),
+    LitString {
+        buf: String,
+        size: usize,
+    },
+    LitInt {
+        buf: String,
+        size: usize,
+        base: IntBase,
+    },
+    LitFloat {
+        buf: String,
+        size: usize,
+    },
     Alpha(char),
     Num(char),
 
@@ -206,7 +224,6 @@ pub enum Tok {
     Or,
     Caret,
     Tilde,
-    Comment,
 
     LParen,
     RParen,
@@ -218,6 +235,8 @@ pub enum Tok {
     Colon,
     SemiColon,
     DoubleColon,
+    RangeEx,
+    RangeInc,
     Comma,
     Bang,
     Ques,
@@ -335,8 +354,10 @@ impl From<&str> for Tok {
             "<=" => Tok::Leq,
             "<<" => Tok::Lsl,
             ">>" => Tok::Lsr,
-            "//" => Tok::Comment,
+            "//" => Tok::Comment("".into()),
             "::" => Tok::DoubleColon,
+            ".." => Tok::RangeEx,
+            "..=" => Tok::RangeInc,
             _ => Tok::Ident(value.to_string()),
         }
     }
@@ -346,9 +367,14 @@ impl std::fmt::Display for Tok {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Tok::Ident(s) => write!(f, "{}", s),
-            Tok::String(s) => write!(f, r#""{}""#, s),
-            Tok::Char(s) => write!(f, "'{}'", s),
-            Tok::Scalar(s) => write!(f, "{}", s),
+            Tok::LitString { buf: text, size } => write!(f, r#""{}" :: {}"#, text, size),
+            Tok::LitChar(s) => write!(f, "'{}'", s),
+            Tok::LitInt {
+                buf: text,
+                size,
+                base: radix,
+            } => write!(f, "{} :: {} :: {}", text, size, radix),
+            Tok::LitFloat { buf: text, size } => write!(f, "{} :: {}", text, size),
             Tok::Alpha(c) => write!(f, "{}", c),
             Tok::Num(c) => write!(f, "{}", c),
             Tok::Plus => write!(f, "+"),
@@ -382,6 +408,8 @@ impl std::fmt::Display for Tok {
             Tok::Colon => write!(f, ":"),
             Tok::SemiColon => write!(f, ";"),
             Tok::DoubleColon => write!(f, "::"),
+            Tok::RangeEx => write!(f, ".."),
+            Tok::RangeInc => write!(f, "..="),
             Tok::Comma => write!(f, ","),
             Tok::Bang => write!(f, "!"),
             Tok::Ques => write!(f, "?"),
@@ -416,36 +444,39 @@ impl std::fmt::Display for Tok {
             Tok::Invalid => write!(f, "Invalid"),
             Tok::Esc => write!(f, "\\"),
             Tok::EOF => write!(f, "EOF"),
-            Tok::Comment => write!(f, "//"),
+            Tok::Comment(s) => write!(f, "// {}", s),
         }
     }
 }
 
 pub enum InitTok {
-    Add,
-    Sub,
-    Mul,
-    Div,
+    Plus,
+    Minus,
+    Star,
+    Slash,
     Eq,
     Bang,
     Gt,
     Lt,
+    Colon,
+    Dot,
+    Under,
     SQ,
     DQ,
-    Alpha(char),
-    Num(char),
-    Under,
+
+    Alpha,
+    Num,
 }
 
 impl TryFrom<char> for InitTok {
-    type Error = err::LexError;
+    type Error = Tok;
 
     fn try_from(value: char) -> Result<Self, Self::Error> {
         match value {
-            '+' => Ok(InitTok::Add),
-            '-' => Ok(InitTok::Sub),
-            '*' => Ok(InitTok::Mul),
-            '/' => Ok(InitTok::Div),
+            '+' => Ok(InitTok::Plus),
+            '-' => Ok(InitTok::Minus),
+            '*' => Ok(InitTok::Star),
+            '/' => Ok(InitTok::Slash),
             '=' => Ok(InitTok::Eq),
             '!' => Ok(InitTok::Bang),
             '>' => Ok(InitTok::Gt),
@@ -453,31 +484,58 @@ impl TryFrom<char> for InitTok {
             '\'' => Ok(InitTok::SQ),
             '"' => Ok(InitTok::DQ),
             '_' => Ok(InitTok::Under),
-            _ if value.is_alphabetic() => Ok(InitTok::Alpha(value)),
-            _ => Err(err::LexError::NotInit(value.to_string())),
+            '.' => Ok(InitTok::Dot),
+            _ if value.is_alphabetic() => Ok(InitTok::Alpha),
+            _ if value.is_numeric() => Ok(InitTok::Num),
+            _ => Err(Tok::from(value)),
         }
     }
 }
 
-impl TryFrom<&Tok> for InitTok {
-    type Error = err::LexError;
+impl TryFrom<Tok> for InitTok {
+    type Error = Tok;
 
-    fn try_from(value: &Tok) -> Result<Self, Self::Error> {
+    fn try_from(value: Tok) -> Result<Self, Self::Error> {
         match value {
-            Tok::Plus => Ok(InitTok::Add),
-            Tok::Minus => Ok(InitTok::Sub),
-            Tok::Star => Ok(InitTok::Mul),
-            Tok::Slash => Ok(InitTok::Div),
+            Tok::Plus => Ok(InitTok::Plus),
+            Tok::Minus => Ok(InitTok::Minus),
+            Tok::Star => Ok(InitTok::Star),
+            Tok::Slash => Ok(InitTok::Slash),
             Tok::Eq => Ok(InitTok::Eq),
             Tok::Bang => Ok(InitTok::Bang),
             Tok::Gt => Ok(InitTok::Gt),
             Tok::Lt => Ok(InitTok::Lt),
             Tok::SQ => Ok(InitTok::SQ),
             Tok::DQ => Ok(InitTok::DQ),
-            Tok::Alpha(c) => Ok(InitTok::Alpha(*c)),
-            Tok::Num(c) => Ok(InitTok::Num(*c)),
+            Tok::Dot => Ok(InitTok::Dot),
+            Tok::Alpha(_) => Ok(InitTok::Alpha),
+            Tok::Num(_) => Ok(InitTok::Num),
             Tok::Under => Ok(InitTok::Under),
-            _ => Err(err::LexError::NotInit(value.to_string())),
+            _ => Err(value),
+        }
+    }
+}
+
+impl TryFrom<&Tok> for InitTok {
+    type Error = LexError;
+
+    fn try_from(value: &Tok) -> Result<Self, Self::Error> {
+        match value {
+            Tok::Plus => Ok(InitTok::Plus),
+            Tok::Minus => Ok(InitTok::Minus),
+            Tok::Star => Ok(InitTok::Star),
+            Tok::Slash => Ok(InitTok::Slash),
+            Tok::Eq => Ok(InitTok::Eq),
+            Tok::Bang => Ok(InitTok::Bang),
+            Tok::Gt => Ok(InitTok::Gt),
+            Tok::Lt => Ok(InitTok::Lt),
+            Tok::SQ => Ok(InitTok::SQ),
+            Tok::DQ => Ok(InitTok::DQ),
+            Tok::Dot => Ok(InitTok::Dot),
+            Tok::Alpha(_) => Ok(InitTok::Alpha),
+            Tok::Num(_) => Ok(InitTok::Num),
+            Tok::Under => Ok(InitTok::Under),
+            _ => Err(LexError::NotInit(value.to_string())),
         }
     }
 }

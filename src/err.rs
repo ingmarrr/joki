@@ -6,11 +6,14 @@ pub enum LexError {
     #[error("Unterminated string literal at line {line}, col {col}")]
     UnterminatedString { line: usize, col: usize },
 
-    #[error("Unterminated comment at line {line}, col {col}")]
-    UnterminatedComment { line: usize, col: usize },
-
     #[error("Invalid number format at line {line}, col {col}")]
     InvalidNumberFormat { line: usize, col: usize },
+
+    #[error("Invalid character literal at line {line}, col {col}")]
+    InvalidCharLiteral { line: usize, col: usize },
+
+    #[error("Missing integer literal at line {line}, col {col}")]
+    MissingIntegerLiteral { line: usize, col: usize },
 
     #[error("Number too large at line {line}, col {col}")]
     NumberTooLarge { line: usize, col: usize },
@@ -27,14 +30,18 @@ pub enum LexError {
     #[error("Unmatched delimiter at line {line}, col {col}")]
     UnmatchedDelimiter { line: usize, col: usize },
 
-    #[error("Incomplete character literal at line {line}, col {col}")]
-    IncompleteCharLiteral { line: usize, col: usize },
-
     #[error("Not an init character {0}")]
     NotInit(String),
 
     #[error("Unexpected EOF at line {line}, col {col}")]
     UnexpectedEOF { line: usize, col: usize },
+
+    #[error("Expected char `{expected}` at line {line}, col {col}")]
+    ExpectedChar {
+        line: usize,
+        col: usize,
+        expected: char,
+    },
 }
 
 #[derive(Debug, thiserror::Error, PartialEq)]

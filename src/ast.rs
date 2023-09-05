@@ -25,15 +25,30 @@ pub enum Decl {
 
 #[derive(Debug, PartialEq)]
 pub enum Expr {
-    LitInt(String),
-    LitFloat(String),
-    LitString(String),
-    LitChar(String),
+    LitInt {
+        buf: String,
+        size: usize,
+        base: IntBase,
+    },
+    LitFloat {
+        buf: String,
+        size: usize,
+    },
+    LitString {
+        buf: String,
+        size: usize,
+    },
+    LitChar(char),
     LitBool(bool),
     If {
         cond: Box<Expr>,
         then: Box<Expr>,
         els: Option<Box<Expr>>,
+    },
+    Range {
+        start: Option<Box<Expr>>,
+        end: Option<Box<Expr>>,
+        inclusive: bool,
     },
     Match,
     // expr: Box<Expr>,
@@ -228,6 +243,47 @@ pub enum IntKind {
     U32,
     U64,
     U128,
+}
+
+#[derive(Debug, PartialEq)]
+pub enum IntBase {
+    Bin,
+    Oct,
+    Dec,
+    Hex,
+}
+
+impl From<char> for IntBase {
+    fn from(c: char) -> Self {
+        match c {
+            'b' => IntBase::Bin,
+            'o' => IntBase::Oct,
+            'x' => IntBase::Hex,
+            _ => IntBase::Dec,
+        }
+    }
+}
+
+impl std::fmt::Display for IntBase {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            IntBase::Bin => write!(f, "0b"),
+            IntBase::Oct => write!(f, "0o"),
+            IntBase::Dec => write!(f, ""),
+            IntBase::Hex => write!(f, "0x"),
+        }
+    }
+}
+
+impl From<String> for IntBase {
+    fn from(s: String) -> Self {
+        match s.as_str() {
+            "0b" => IntBase::Bin,
+            "0o" => IntBase::Oct,
+            "0x" => IntBase::Hex,
+            _ => IntBase::Dec,
+        }
+    }
 }
 
 #[derive(Debug, PartialEq)]
