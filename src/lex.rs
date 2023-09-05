@@ -102,15 +102,12 @@ impl Lexer {
                 return Ok(Tok::EOF);
             }
             if let Tok::Invalid = tok {
-                // self.errs.push(err::LexError::InvalidToken {
-                //     line: self.cx.line,
-                //     col: self.cx.col,
-                // });
                 tracing::error!(
                     "Invalid token at line {}, col {}",
                     self.cx.line,
                     self.cx.col
                 );
+                continue;
             };
 
             let itok = match InitTok::try_from(&tok) {
@@ -129,9 +126,9 @@ impl Lexer {
                 InitTok::Dot => self.lx_dot(),
                 InitTok::Slash => self.lx_slash(),
                 InitTok::Plus => check!(self,  '=' => Tok::AddEq; Tok::Plus),
-                InitTok::Minus => check!(self,  '=' => Tok::SubEq; Tok::Minus),
+                InitTok::Minus => check!(self,  '=' => Tok::SubEq, '>' => Tok::Arrow; Tok::Minus),
                 InitTok::Star => check!(self,  '=' => Tok::MulEq; Tok::Star),
-                InitTok::Eq => check!(self,  '=' => Tok::Deq; Tok::Eq),
+                InitTok::Eq => check!(self,  '=' => Tok::Deq, '>' => Tok::FatArrow; Tok::Eq),
                 InitTok::Bang => check!(self, '=' => Tok::Neq; Tok::Bang),
                 InitTok::Lt => check!(self, '=' => Tok::Leq, '<' => Tok::Lsl; Tok::Lt),
                 InitTok::Gt => check!(self, '=' => Tok::Geq, '>' => Tok::Lsr; Tok::Gt),
@@ -247,7 +244,7 @@ impl Lexer {
                     }
                 }
                 let tok = Ok(Tok::LitFloat { buf, size });
-                tracing::info!("Found valid float :: {:#?}", tok);
+                tracing::info!("Found valid float :: {:?}", tok);
                 return tok;
             }
         }
@@ -303,7 +300,7 @@ impl Lexer {
 
     fn lx_dot(&mut self) -> Result<Tok, LexError> {
         let peek = self.peek();
-        tracing::info!("Found :: {:#?}", peek);
+        tracing::info!("Found :: {:?}", peek);
         match peek {
             Some('.') => {
                 tracing::info!("Found range");
@@ -333,7 +330,7 @@ impl Lexer {
 
     fn lx_slash(&mut self) -> Result<Tok, LexError> {
         let peek = self.peek();
-        tracing::info!("Found :: {:#?}", peek);
+        tracing::info!("Found :: {:?}", peek);
         match peek {
             Some('/') => {
                 self.take();
@@ -462,7 +459,7 @@ mod tests {
     #[traced_test]
     #[test]
     fn test_symbols() {
-        let txt = "+-*/()[]{};:,= ><&|^~!@#?_.\\ += -= *= /= == != >= <= << >> ! & | ^ ~ ";
+        let txt = "+-*/()[]{};:,= ><&|^~!@#?_.\\ += -= *= /= == != -> => >= <= << >> ! & | ^ ~ ";
         let mut lexer = Lexer::new(txt);
         let toks = lexer.lex();
         assert_eq!(
@@ -501,6 +498,8 @@ mod tests {
                 Tok::DivEq,
                 Tok::Deq,
                 Tok::Neq,
+                Tok::Arrow,
+                Tok::FatArrow,
                 Tok::Geq,
                 Tok::Leq,
                 Tok::Lsl,

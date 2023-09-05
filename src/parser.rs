@@ -1,7 +1,6 @@
 use crate::{
-    ast::{BinaryOp, BuiltIn, CmpOp, Decl, Expr, Stmt, Type, UnaryOp},
+    ast::{BinaryOp, BuiltIn, Decl, Expr, Stmt, Type, UnaryOp},
     err::ParseError,
-    log,
     token::Tok,
 };
 
@@ -20,26 +19,21 @@ impl Parser {
 
     pub fn parse(&mut self) -> Vec<Stmt> {
         let mut decls = Vec::new();
-        while let Some(decl) = self.next_decl() {
+        while let Ok(decl) = self.parse_decl() {
             decls.push(Stmt::Decl(decl));
         }
         decls
     }
 
-    fn next_decl(&mut self) -> Option<Decl> {
-        let tok = self.lx.next_token();
-
-        if let Err(_) = tok {
-            return None;
+    fn parse_decl(&mut self) -> Result<Decl, ParseError> {
+        match self.lx.lookahead() {
+            Ok(Tok::Let) => self.parse_let(),
+            Ok(Tok::Fn) => self.parse_fn(),
+            _ => Err(ParseError::InvalidDeclToken {
+                line: self.lx.cx.line,
+                col: self.lx.cx.col,
+            }),
         }
-        let tok = tok.unwrap();
-
-        let _ = match tok {
-            Tok::Let => self.parse_let(),
-            _ => todo!(),
-        };
-
-        todo!()
     }
 
     fn parse_expr(&mut self) -> Result<Expr, ParseError> {
@@ -81,16 +75,9 @@ impl Parser {
             | Expr::FnCall { .. } => {
                 tracing::info!("Parsing binary expr");
                 tracing::info!("Found binary lhs :: {:?}", pot_lhs);
-                // let (v1, v2) = self.lx.peek_n_no_ws::<2>().splat();
-                let tok = self.lx.lookahead()?;
-                info!(LA, "{:#?}", tok);
-                let op = CmpOp::from(tok);
-
-                // let op = CmpOp::from((v1, v2));
-                tracing::info!("Found cmp op :: {:?}", op);
-                let binop = match op {
-                    CmpOp::Invalid => return Ok(pot_lhs),
-                    _ => self.lx.next_token().map(BinaryOp::from)?,
+                let binop = match BinaryOp::from(self.lx.lookahead()?) {
+                    BinaryOp::Invalid => return Ok(pot_lhs),
+                    _ => BinaryOp::from(self.lx.next_token()?),
                 };
                 tracing::info!("Found binary op :: {:?}", binop);
                 let rhs = self.parse_expr()?;
@@ -344,10 +331,135 @@ impl Parser {
     }
 
     fn parse_fn(&mut self) -> Result<Decl, ParseError> {
-        Err(ParseError::ExpectedToken {
-            tok: "fn".to_string(),
-            line: self.lx.cx.line,
-            col: self.lx.cx.col,
+        tracing::info!("Parsing fn decl");
+
+        match self.lx.next_token() {
+            Ok(Tok::Fn) => {}
+            _ => {
+                tracing::error!("Expected `fn`");
+                return Err(ParseError::ExpectedToken {
+                    tok: "fn".to_string(),
+                    line: self.lx.cx.line,
+                    col: self.lx.cx.col,
+                });
+            }
+        };
+
+        let name = match self.lx.next_token() {
+            Ok(Tok::Ident(s)) => s,
+            _ => {
+                tracing::error!("Expected identifier");
+                return Err(ParseError::ExpectedToken {
+                    tok: "identifier".to_string(),
+                    line: self.lx.cx.line,
+                    col: self.lx.cx.col,
+                });
+            }
+        };
+
+        match self.lx.next_token() {
+            Ok(Tok::LParen) => {}
+            _ => {
+                return Err(ParseError::ExpectedToken {
+                    tok: "(".to_string(),
+                    line: self.lx.cx.line,
+                    col: self.lx.cx.col,
+                })
+            }
+        };
+
+        let mut args = Vec::new();
+        loop {
+            match self.lx.next_token() {
+                Ok(Tok::RParen) => break,
+                Ok(Tok::Comma) => continue,
+                Ok(Tok::Ident(s)) => {
+                    match self.lx.next_token() {
+                        Ok(Tok::Colon) => {}
+                        _ => {
+                            return Err(ParseError::ExpectedToken {
+                                tok: ":".to_string(),
+                                line: self.lx.cx.line,
+                                col: self.lx.cx.col,
+                            })
+                        }
+                    };
+
+                    let ty = match self.lx.next_token() {
+                        Ok(Tok::Ident(s)) => Type::from(s),
+                        _ => {
+                            return Err(ParseError::ExpectedToken {
+                                tok: "identifier".to_string(),
+                                line: self.lx.cx.line,
+                                col: self.lx.cx.col,
+                            })
+                        }
+                    };
+
+                    args.push((s, ty));
+                }
+                _ => {
+                    return Err(ParseError::ExpectedToken {
+                        tok: "identifier".to_string(),
+                        line: self.lx.cx.line,
+                        col: self.lx.cx.col,
+                    })
+                }
+            };
+        }
+
+        match self.lx.next_token() {
+            Ok(Tok::Arrow) => {}
+            _ => {
+                return Err(ParseError::ExpectedToken {
+                    tok: "->".to_string(),
+                    line: self.lx.cx.line,
+                    col: self.lx.cx.col,
+                })
+            }
+        };
+
+        let ret = match self.lx.next_token() {
+            Ok(Tok::Ident(s)) => Type::from(s),
+            _ => {
+                return Err(ParseError::ExpectedToken {
+                    tok: "identifier".to_string(),
+                    line: self.lx.cx.line,
+                    col: self.lx.cx.col,
+                })
+            }
+        };
+
+        match self.lx.next_token() {
+            Ok(Tok::LBrace) => {}
+            _ => {
+                return Err(ParseError::ExpectedToken {
+                    tok: "{".to_string(),
+                    line: self.lx.cx.line,
+                    col: self.lx.cx.col,
+                })
+            }
+        };
+
+        let body = self.parse_expr()?;
+        tracing::info!("Found fn body :: {:?}", body);
+
+        match self.lx.next_token() {
+            Ok(Tok::RBrace) => {}
+            _ => {
+                return Err(ParseError::ExpectedToken {
+                    tok: "}".to_string(),
+                    line: self.lx.cx.line,
+                    col: self.lx.cx.col,
+                })
+            }
+        };
+
+        Ok(Decl::Fn {
+            name,
+            args,
+            ret,
+            body,
         })
     }
 
@@ -427,7 +539,7 @@ mod tests {
                 tracing::info!("Testing decl :: {}", $src);
                 let lx = crate::lex::Lexer::new($src);
                 let mut parser = Parser::new(lx);
-                let decl = parser.parse_let();
+                let decl = parser.parse_decl();
                 assert!(decl.is_ok());
                 let decl = decl.unwrap();
                 assert_eq!(decl, $expected);
@@ -445,7 +557,7 @@ mod tests {
                 tracing::info!("Testing decl :: {}", $src);
                 let lx = crate::lex::Lexer::new($src);
                 let mut parser = Parser::new(lx);
-                let decl = parser.parse_let();
+                let decl = parser.parse_decl();
                 assert!(decl.is_err());
                 let decl = decl.unwrap_err();
                 assert_eq!(decl, $expected);
@@ -571,6 +683,31 @@ mod tests {
             line: 0,
             col: 22,
         };
+        fail_invalid_expr_add: "if 5 + 1 { 5 }", ParseError::ExpectedExpr {
+            expr: "boolean".to_string(),
+            line: 0,
+            col: 9,
+        };
+        fail_invalid_expr_sub: "if 5 - 1 { 5 }", ParseError::ExpectedExpr {
+            expr: "boolean".to_string(),
+            line: 0,
+            col: 9,
+        };
+        fail_invalid_expr_str: "if \"hello\" { 5 }", ParseError::ExpectedExpr {
+            expr: "boolean".to_string(),
+            line: 0,
+            col: 11,
+        };
+        fail_invalid_expr_int: "if 1 { 5 }", ParseError::ExpectedExpr {
+            expr: "boolean".to_string(),
+            line: 0,
+            col: 5,
+        };
+        fail_invalid_expr_float: "if 1.0 { 5 }", ParseError::ExpectedExpr {
+            expr: "boolean".to_string(),
+            line: 0,
+            col: 7,
+        };
     );
     parse_test!(
         Decl, must,
@@ -578,6 +715,15 @@ mod tests {
             name: "x".to_string(),
             ty: Type::BuiltIn(BuiltIn::Int(IntKind::I32)),
             val: Expr::LitInt{ buf: "5".to_string(), size: 1, base: IntBase::Dec },
+        };
+        let_decl_add: "let x: i32 = 5 + 5;", Decl::Var {
+            name: "x".to_string(),
+            ty: Type::BuiltIn(BuiltIn::Int(IntKind::I32)),
+            val: Expr::Binary {
+                op: BinaryOp::Add,
+                lhs: Box::new(Expr::LitInt{ buf: "5".to_string(), size: 1, base: IntBase::Dec }),
+                rhs: Box::new(Expr::LitInt{ buf: "5".to_string(), size: 1, base: IntBase::Dec }),
+            },
         };
         fn_decl: "fn foo() -> i32 { 5 }", Decl::Fn {
             name: "foo".to_string(),

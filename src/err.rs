@@ -49,6 +49,9 @@ pub enum ParseError {
     #[error("Invalid token at (line :: {line}, col :: {col})")]
     InvalidToken { line: usize, col: usize },
 
+    #[error("Invalid declaration token at (line :: {line}, col :: {col})")]
+    InvalidDeclToken { line: usize, col: usize },
+
     #[error("Unexpected EOF at (line :: {line}, col :: {col})")]
     UnexpectedEOF { line: usize, col: usize },
 
