@@ -5,16 +5,39 @@ pub struct Ast {
 }
 
 pub enum AstKind {
-    Decl,
+    Decl {
+        vis: Visibility,
+        time: Time,
+        decl: Decl,
+    },
     Expr,
     Tok(TokKind),
 }
 
+pub enum Visibility {
+    Pub,
+    Priv,
+}
+
+pub enum Time {
+    Comptime,
+    Runtime,
+}
+
 #[derive(Debug, PartialEq)]
 pub enum Decl {
-    Fn(),
+    Fn {
+        name: String,
+        args: Vec<(String, Type)>,
+        ret: Type,
+        body: Expr,
+    },
     Asm(),
-    Var { name: String, ty: Type, val: Expr },
+    Var {
+        name: String,
+        ty: Type,
+        val: Expr,
+    },
     Struct(),
     Trait(),
     Impl(),

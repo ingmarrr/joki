@@ -27,14 +27,21 @@ macro_rules! check {
     };
 }
 
+pub struct Cx {
+    ix: usize,
+    ch: char,
+    line: usize,
+    col: usize,
+}
+
 pub struct Lexer {
-    pub chars: Vec<char>,
     pub errs: Vec<err::LexError>,
     pub toks: Vec<Tok>,
-    pub ix: usize,
-    pub ch: char,
     pub line: usize,
     pub col: usize,
+    chars: Vec<char>,
+    ix: usize,
+    ch: char,
     fchar: bool,
 }
 
@@ -176,9 +183,34 @@ impl Lexer {
                 break;
             }
         }
+        tracing::info!("Found valid int :: {}", buf);
 
-        if let Some(ch) = self.peek() {
+        if let Some(ch) = self.peek_nth(0) {
             if ch == '.' {
+                match self.peek_nth(1) {
+                    Some('.') => {
+                        return Ok(Tok::LitInt {
+                            buf,
+                            size,
+                            base: IntBase::Dec,
+                        })
+                    }
+                    Some(c) if !c.is_digit(10) => {
+                        return Ok(Tok::LitInt {
+                            buf,
+                            size,
+                            base: IntBase::Dec,
+                        })
+                    }
+                    None => {
+                        return Ok(Tok::LitInt {
+                            buf,
+                            size,
+                            base: IntBase::Dec,
+                        })
+                    }
+                    Some(_) => {}
+                };
                 buf.push(self.take().unwrap());
                 size += 1;
                 while let Some(ch) = self.peek() {
@@ -293,81 +325,6 @@ impl Lexer {
         }
     }
 
-    // pub fn next_tok(&mut self) -> Result<Tok, LexError> {
-    //     self.skip_ws();
-    //     while let Some(ch) = self.take() {
-    //         let tok = Tok::from(ch);
-    //         if let Tok::Invalid = tok {
-    //             self.errs.push(err::LexError::InvalidToken {
-    //                 line: self.line,
-    //                 col: self.col,
-    //             });
-    //             tracing::error!("Invalid token at line {}, col {}", self.line, self.col);
-    //         };
-
-    //         let init_tok = InitTok::try_from(&tok);
-
-    //         if let Err(_) = init_tok {
-    //             tracing::info!("Found valid token :: {}", tok);
-    //             return Ok(tok);
-    //         }
-
-    //         let init_tok = init_tok.unwrap();
-    //         match init_tok {
-    //             InitTok::SQ => return Ok(Tok::LitChar(self.take_until('\''))),
-    //             InitTok::DQ => return Ok(Tok::LitString(self.take_until('"'))),
-    //             InitTok::Add => check!(self, '=' => Tok::AddEq; Tok::Plus),
-    //             InitTok::Sub => check!(self, '=' => Tok::SubEq; Tok::Minus),
-    //             InitTok::Mul => check!(self, '=' => Tok::MulEq; Tok::Star),
-    //             InitTok::Div => check!(self, '=' => Tok::DivEq, '/' => Tok::Comment; Tok::Slash),
-    //             InitTok::Eq => check!(self, '=' => Tok::Deq; Tok::Eq),
-    //             InitTok::Lt => check!(self, '=' => Tok::Leq, '<' => Tok::Lsl; Tok::Lt),
-    //             InitTok::Gt => check!(self, '=' => Tok::Geq, '>' => Tok::Lsr; Tok::Gt),
-    //             InitTok::Bang => check!(self, '=' => Tok::Neq; Tok::Bang),
-    //             InitTok::Num(_) => {
-    //                 let n = self.lx_num(ch);
-    //                 // let num = self.take_while(ch, |tok| match tok {
-    //                 //     Tok::Num(_) | Tok::Under | Tok::Dot => true,
-    //                 //     _ => false,
-    //                 // });
-    //                 tracing::info!("Found valid number :: {}", n);
-    //                 return Ok(Tok::Scalar(n));
-    //             }
-    //             InitTok::Alpha(_) => {
-    //                 let ident = self.take_while(ch, |tok| match tok {
-    //                     Tok::Alpha(_) | Tok::Num(_) | Tok::Under => true,
-    //                     _ => false,
-    //                 });
-    //                 let kw = Tok::from(ident.as_str());
-    //                 if let Tok::Ident(_) = kw {
-    //                     tracing::info!("Found valid ident :: {}", ident);
-    //                     return Ok(Tok::Ident(ident));
-    //                 }
-    //                 tracing::info!("Found valid keyword :: {}", ident);
-    //                 return Ok(kw);
-    //             }
-    //             InitTok::Under => {
-    //                 let ident = self.take_while(ch, |tok| match tok {
-    //                     Tok::Alpha(_) | Tok::Num(_) | Tok::Under => true,
-    //                     _ => false,
-    //                 });
-    //                 for ch in ident.chars() {
-    //                     if ch != '_' {
-    //                         tracing::info!("Found valid ident :: {}", ident);
-    //                         return Ok(Tok::Ident(ident));
-    //                     }
-    //                 }
-    //                 tracing::info!("Found valid keyword :: {}", ident);
-    //                 return Ok(Tok::Under);
-    //             }
-    //         }
-    //     }
-    //     Err(LexError::UnexpectedEOF {
-    //         line: self.line,
-    //         col: self.col,
-    //     })
-    // }
-
     fn take(&mut self) -> Option<char> {
         if self.ix >= self.chars.len() {
             return None;
@@ -448,10 +405,14 @@ impl Lexer {
         Some(self.chars[self.ix])
     }
 
-    // Peeks the nth character ahead
-    // 0 is the current character
-    // 1 is the next character
-    // And so on
+    /// Peeks the nth character ahead
+    /// 0 is actually the next character
+    /// 1 is the second next character
+    /// And so on
+    ///
+    /// Since ix is initally 0, peeking 0 will return the first character
+    /// peeking 1 will return the second character. From that ix will always
+    /// be increased when taking a character, so the offset continues
     fn peek_nth(&mut self, n: usize) -> Option<char> {
         if self.ix + n >= self.chars.len() {
             return None;
@@ -487,7 +448,7 @@ impl Lexer {
     fn skip_ws(&mut self) {
         while let Some(tok) = self.peek().map(Tok::try_from) {
             match tok {
-                Ok(Tok::Ws) | Ok(Tok::Nl) => {
+                Ok(Tok::Ws) | Ok(Tok::Nl) | Ok(Tok::Tab) => {
                     self.take();
                 }
                 _ => break,
@@ -501,6 +462,32 @@ mod tests {
     use tracing_test::traced_test;
 
     use super::*;
+
+    macro_rules! lex_test {
+        ($name:ident, $txt:expr, $toks:expr) => {
+            #[traced_test]
+            #[test]
+            fn $name() {
+                tracing::info!("Testing lexing of :: {}", $txt);
+                let mut lexer = Lexer::new($txt);
+                let toks = lexer.lex();
+                assert_eq!(toks, $toks);
+            }
+        };
+    }
+
+    lex_test!(test_empty, "", vec![]);
+    lex_test!(test_ws, " \t\n\r", vec![]);
+    lex_test!(
+        test_comment,
+        "// Hello, world!",
+        vec![Tok::Comment(" Hello, world!".into())]
+    );
+    lex_test!(
+        test_comment_ws,
+        "// Hello, world!\n",
+        vec![Tok::Comment(" Hello, world!".into())]
+    );
 
     #[traced_test]
     #[test]
@@ -667,7 +654,7 @@ mod tests {
     #[test]
     fn test_floats() {
         let txt = r#"
-        123.123 123...
+        123.123 123... 123.hello 123.0.hello
         "#;
         let mut lexer = Lexer::new(txt);
         let toks = lexer.lex();
@@ -678,12 +665,45 @@ mod tests {
                     buf: "123.123".to_string(),
                     size: 7
                 },
-                Tok::LitFloat {
-                    buf: "123.".to_string(),
-                    size: 4
+                Tok::LitInt {
+                    buf: "123".to_string(),
+                    size: 3,
+                    base: IntBase::Dec
                 },
-                Tok::RangeEx
+                Tok::RangeEx,
+                Tok::Dot,
+                Tok::LitInt {
+                    buf: "123".to_string(),
+                    size: 3,
+                    base: IntBase::Dec
+                },
+                Tok::Dot,
+                Tok::Ident("hello".to_string()),
+                Tok::LitFloat {
+                    buf: "123.0".to_string(),
+                    size: 5
+                },
+                Tok::Dot,
+                Tok::Ident("hello".to_string()),
             ]
         );
     }
+
+    lex_test!(
+        test_range,
+        "1..2",
+        vec![
+            Tok::LitInt {
+                buf: "1".to_string(),
+                size: 1,
+                base: IntBase::Dec
+            },
+            Tok::RangeEx,
+            Tok::LitInt {
+                buf: "2".to_string(),
+                size: 1,
+                base: IntBase::Dec
+            }
+        ]
+    );
 }

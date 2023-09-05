@@ -422,7 +422,7 @@ mod tests {
                 assert_eq!(decl, $expected);
             }
         };
-        (Decl, $( must, $name:ident: $src:expr, $expected:expr; )*) => {
+        (Decl, must, $( $name:ident: $src:expr, $expected:expr; )*) => {
             $(
                 parse_test!(Decl, must, $name, $src, $expected);
             )*
@@ -567,6 +567,12 @@ mod tests {
             name: "x".to_string(),
             ty: Type::BuiltIn(BuiltIn::Int(IntKind::I32)),
             val: Expr::LitInt{ buf: "5".to_string(), size: 1, base: IntBase::Dec },
+        };
+        fn_decl: "fn foo() -> i32 { 5 }", Decl::Fn {
+            name: "foo".to_string(),
+            args: Vec::new(),
+            ret: Type::BuiltIn(BuiltIn::Int(IntKind::I32)),
+            body: Expr::LitInt{ buf: "5".to_string(), size: 1, base: IntBase::Dec },
         };
     );
     parse_test!(
